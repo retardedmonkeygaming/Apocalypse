@@ -63,27 +63,15 @@ class GameEngine:
         self.state.world.npcs = default_npcs()
         self.state.world.npcs["kid"]["name"] = kid
         self.state.world.npcs["kid"]["short"] = kid
-        self.state.world.weather = "overcast"
-        self.state.world.location = "12th Floor Apartment"
-        self.state.world.known_locations = [
-            "12th Floor Apartment",
-            "12th Floor Corridor",
-            "Dark Stairwell",
-            "Home Base",
-            "Streets",
-            "Abandoned Mall",
-            "Hospital",
-            "Radio Tower",
-        ]
+        self.state.world.weather = random.choice(["clear", "overcast", "clear"])
         self.state.log = [
-            "3:17 AM. You awaken on the 12th floor to a screeching emergency alert.",
-            "The alert flashes across screens: ELEVATORS DEAD. DO NOT LOOK OUTSIDE.",
-            "Day 1. The viral outbreak has begun. You must memorize the rules to survive.",
+            "You awaken behind reinforced plywood in the boarded apartment.",
+            "Outside, the city hums with rain, rust, and the relentless dead.",
+            f"Day 1. Weather: {self.state.world.weather.upper()}. Channel 7 is on the air.",
         ]
-        ev = select_event(self.state, "12th Floor Apartment")
-        self._present_event(ev)
+        self._hub_menu()
         self.display.show_health(self.state.player.health)
-        await self.buzzer.danger()
+        await self.buzzer.success()
         self.state.save()
         await self.broadcast()
 
@@ -137,7 +125,7 @@ class GameEngine:
         self.display.show("H" if not s.world.is_night else "n")
 
     def _location_menu(self):
-        known = [n for n in self.state.world.known_locations if n != self.state.world.location]
+        known = [n for n in self.state.world.known_locations if n != "Home Base"]
         if not known:
             known = ["Streets"]
 
@@ -146,11 +134,11 @@ class GameEngine:
         if day >= 2:
             for extra in ("Warehouse", "Church", "Radio Tower", "Subway Tunnels", "Gas Station"):
                 self._discover(extra)
-        if day >= 4:
+        if day >= 5:
             for extra in ("Military Checkpoint", "School", "Docks", "Overgrown Park", "Ruined Pharmacy"):
                 self._discover(extra)
 
-        known = [n for n in self.state.world.known_locations if n != self.state.world.location]
+        known = [n for n in self.state.world.known_locations if n != "Home Base"]
 
         # Show up to 4 locations per menu slice
         if len(known) > 4:
@@ -162,11 +150,10 @@ class GameEngine:
         choices = []
         for name in shown:
             risk_pct = int(LOCATIONS.get(name, {}).get("risk", 0.3) * 100)
-            icon = LOCATIONS.get(name, {}).get("icon", "📍")
-            choices.append({"label": f"{icon} {name} ({risk_pct}%)", "effect": {"expedition": name}})
+            choices.append({"label": f"{name} ({risk_pct}% risk)", "effect": {"expedition": name}})
 
         self.state.menu = "locations"
-        blurb = "Select a sector coordinate on the city map. Risk scales with distance, fog, and night. Press MAP to view the grid."
+        blurb = "Select a coordinate on the city map. Risk scales with distance, fog, and night."
         self._show("LEAVE THE APARTMENT", blurb, choices, "map", "menu", "BACK")
         self.display.show("L")
 

@@ -52,29 +52,7 @@ document.querySelectorAll(".arcade-btn").forEach((btn) => {
   });
 });
 
-// 2. VIEW TOGGLES (SCENE / CITY MAP)
-const btnScene = document.getElementById("toggle-scene");
-const btnMap = document.getElementById("toggle-map");
-if (btnScene && btnMap) {
-  btnScene.addEventListener("click", () => {
-    if (window.Scene) {
-      Scene.viewMode = "scene";
-      btnScene.classList.add("active");
-      btnMap.classList.remove("active");
-      if (Scene.lastState) Scene.render(Scene.lastState);
-    }
-  });
-  btnMap.addEventListener("click", () => {
-    if (window.Scene) {
-      Scene.viewMode = "map";
-      btnMap.classList.add("active");
-      btnScene.classList.remove("active");
-      if (Scene.lastState) Scene.render(Scene.lastState);
-    }
-  });
-}
-
-// 3. FOOTER UTILITIES: NEW RUN, MUTE & SCANLINES
+// 2. FOOTER UTILITIES: NEW RUN, MUTE & SCANLINES
 document.getElementById("btn-new-game").addEventListener("click", () => {
   if (confirm("Abandon this run and wake up behind the boarded door again?")) {
     if (window.SFX) SFX.ensure();
@@ -113,15 +91,6 @@ document.addEventListener("keydown", (e) => {
   if (keyMap[e.key]) {
     e.preventDefault();
     press(keyMap[e.key]);
-    return;
-  }
-
-  // Shortcut: TAB to toggle between Animated Scene and City Map
-  if (e.key === "Tab") {
-    e.preventDefault();
-    if (window.Scene) {
-      Scene.toggleViewMode();
-    }
     return;
   }
 

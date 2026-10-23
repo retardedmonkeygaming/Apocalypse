@@ -127,24 +127,7 @@ class GameState:
         return out
 
     def to_dict(self) -> dict:
-        from backend.app.game.content import LOCATIONS
-
         self.clamp()
-        map_data = {}
-        for name in self.world.known_locations:
-            if name in LOCATIONS:
-                loc_info = LOCATIONS[name]
-                map_data[name] = {
-                    "name": name,
-                    "x": loc_info.get("map_x", 160),
-                    "y": loc_info.get("map_y", 90),
-                    "icon": loc_info.get("icon", "📍"),
-                    "threat": loc_info.get("threat", "MED"),
-                    "risk": loc_info.get("risk", 0.3),
-                    "blurb": loc_info.get("blurb", ""),
-                    "connections": loc_info.get("connections", []),
-                }
-
         return {
             "player": asdict(self.player),
             "world": asdict(self.world),
@@ -167,7 +150,6 @@ class GameState:
             "infection_stage": self.infection_stage(),
             "party": self.party(),
             "inv_slots": INV_SLOTS,
-            "map_data": map_data,
         }
 
     def save(self):

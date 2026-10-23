@@ -1,7 +1,7 @@
 """
 Apocalypse Terminal — Encounter & Story Event Catalog.
-Features the 12th-Floor Emergency Alert opening, companion choice, Survival Rules,
-and branching citywide narrative arcs.
+Rich atmospheric encounters with branching consequences, multi-stage companion arcs,
+and dynamic location/weather hooks.
 """
 
 import copy
@@ -57,114 +57,11 @@ def _apply_kid(state, text: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# PROLOGUE & 12TH FLOOR APARTMENT OUTBREAK
+# STORY BEATS & CHARACTER ARCS
 # ─────────────────────────────────────────────────────────────
 
 EVENTS: List[Dict[str, Any]] = [
-    # ── THE OPENING HOOK: 3:17 AM EMERGENCY ALERT ──
-    _e(
-        "apt12_eas_alert",
-        "3:17 AM — EMERGENCY BROADCAST SYSTEM",
-        "You were asleep in Apartment 1204 on the 12th floor. "
-        "At 3:17 AM, a deafening, metallic siren screams simultaneously from your smartphone and television speakers: \n\n"
-        "『EMERGENCY ALERT SYSTEM — BIOLOGICAL CONTAMINANT LEVEL 5.\n"
-        "ELEVATORS SHUT DOWN. CIVILIANS ORDERED TO SHELTER IN PLACE.\n"
-        "RULE 1: NEVER OPEN YOUR DOOR IF THEY KNOCK FOUR TIMES.\n"
-        "RULE 2: CHECK THE 12TH-FLOOR HALLWAY WITH A MIRROR FIRST.\n"
-        "RULE 3: IF A VOICE BEHIND THE WALL CALLS YOUR NAME, DO NOT ANSWER.\n"
-        "RULE 4: THE STAIRWELL HAS 12 FLOORS OF CONCRETE DARKNESS. NEVER SHINE LIGHT ON SHADOWS OVER 3 SECONDS.』\n\n"
-        "Outside your window twelve floors up, the city skyline is already burning.",
-        [
-            _c("Fortify Apt 1204 door", "red", fort=1, add_item="rule_sheet", flags={"fortified_1204": True}, gemini=True),
-            _c("Check Apt 1206 (Maya)", "blue", flags={"met_maya_door": True}, gemini=True),
-            _c("Check Apt 1202 (Sean)", "green", flags={"met_sean_door": True}, gemini=True),
-            _c("Pack bug-out bag", "yellow", food=2, water=2, add_item="kitchen_knife", flags={"packed_bag": True}),
-        ],
-        scene="eas",
-        unique=True,
-        story=True,
-        locations=["12th Floor Apartment", "Home Base"],
-    ),
-
-    # ── COMPANION RECRUITMENT ON FLOOR 12 ──
-    _e(
-        "apt12_companion_maya",
-        "APARTMENT 1206 — MAYA VANCE",
-        "You step into the 12th-floor hallway where fluorescent tubes buzz erratically. "
-        "Door 1206 opens a sliver. Maya Vance, a 3rd-year medical resident, grips an emergency fire axe with white knuckles. "
-        "'I heard the alert,' she whispers, her gaze scanning the ceiling vents. 'The elevators are dead. "
-        "I have trauma bandages and hospital keys. We survive together, or not at all.'",
-        [
-            _c("Team up with Maya", "red", npc_join="maya", medkits=2, add_item="clean_gauze", flags={"companion_chosen": "maya"}, gemini=True),
-            _c("Trade advice & part ways", "blue", medkits=1, humanity=2, flags={"met_maya": True}),
-            _c("Take her fire axe by force", "green", add_item="fire_axe", humanity=-12, flags={"maya_hostile": True}),
-            _c("Back away to your room", "yellow", log="You retreat into 1204."),
-        ],
-        scene="hallway",
-        unique=True,
-        story=True,
-        locations=["12th Floor Apartment", "12th Floor Corridor", "Home Base"],
-        min_day=1,
-    ),
-    _e(
-        "apt12_companion_sean",
-        "APARTMENT 1202 — SEAN MILLER",
-        "Sean Miller, an ex-emergency radio technician and army vet, is already unbolting his steel door. "
-        "A handheld scanner crackles on his tactical vest, picking up military chatter on 144.3 MHz. "
-        "'Channel 7 is still transmitting,' Sean says with grim focus. 'The stairwell has runners between floors 8 and 4. "
-        "Take this crowbar. Let's clear the corridor and secure the safehouse.'",
-        [
-            _c("Team up with Sean", "red", npc_join="sean", ammo=4, add_item="crowbar", flags={"companion_chosen": "sean"}, gemini=True),
-            _c("Take radio frequencies", "blue", add_item="radio_scanner", flags={"met_sean": True}),
-            _c("Demand all his ammo", "green", ammo=6, humanity=-10, flags={"sean_hostile": True}),
-            _c("Return to Apartment 1204", "yellow", log="You bolt your door."),
-        ],
-        scene="hallway",
-        unique=True,
-        story=True,
-        locations=["12th Floor Apartment", "12th Floor Corridor", "Home Base"],
-        min_day=1,
-    ),
-
-    # ── DESCENDING THE 12 FLOORS ──
-    _e(
-        "apt12_stairwell_descent",
-        "THE 12-FLIGHT STAIRWELL",
-        "The heavy fire door closes behind you with a concussive clang. "
-        "Pitch blackness swallows the concrete stairwell. Twelve flights of stairs wind downward into the depths. "
-        "Between Floor 8 and Floor 7, wet footsteps slap against the concrete steps above you.",
-        [
-            _c("Flash beam & ready steel", "red", combat="shambler", log="A shambler stumbles down the steps!"),
-            _c("Tuck behind standpipe (Rule 4)", "blue", morale=4, risk=0.1, log="You hold your breath. The rotting figure stumbles past."),
-            _c("Pry 6th Floor Fire Escape", "green", scrap=2, discover="Streets", flags={"used_fire_escape": True}),
-            _c("Retreat back to Floor 12", "yellow", log="You climb back up to Apartment 1204."),
-        ],
-        scene="stairwell",
-        unique=True,
-        story=True,
-        locations=["12th Floor Corridor", "Dark Stairwell"],
-    ),
-
-    # ── REACHING THE GROUND FLOOR LOBBY ──
-    _e(
-        "apt12_ground_lobby",
-        "GROUND FLOOR ATRIUM",
-        "You step into the glass residential lobby. Smashed revolving doors let in cold night air and the wail of distant car alarms. "
-        "Behind the reception marble desk sits an emergency security key box. "
-        "Beyond the glass, the city streets stretch out into darkness.",
-        [
-            _c("Search security lockbox", "red", add_item="flashlight", scrap=2, ammo=2),
-            _c("Step out into the Streets", "blue", location="Streets", discover="Streets", discover2="Abandoned Mall"),
-            _c("Reinforce the lobby gate", "green", scrap=-1, fort=1, flags={"secured_lobby": True}),
-            _c("Check building directory", "yellow", discover="Hospital", discover2="Radio Tower"),
-        ],
-        scene="streets",
-        unique=True,
-        story=True,
-        locations=["Dark Stairwell", "Streets"],
-    ),
-
-    # ── MARCUS / CHANNEL 7 STORYLINE ──
+    # ── MARCUS / CHANNEL 7 ──
     _e(
         "radio_static",
         "CHANNEL 7 BROADCAST",
@@ -445,6 +342,10 @@ EVENTS: List[Dict[str, Any]] = [
         locations=["Abandoned Mall", "Streets", "Overgrown Park"],
     ),
 
+    # ─────────────────────────────────────────────────────────────
+    # EXPLORATION, SURVIVAL & TACTICAL ENCOUNTERS
+    # ─────────────────────────────────────────────────────────────
+
     # ── ABANDONED MALL ──
     _e(
         "mall_food_court",
@@ -566,7 +467,7 @@ EVENTS: List[Dict[str, Any]] = [
     _e(
         "park_spring",
         "RECLAIMED MEADOW",
-        "Weeds and wildflowers have cracked the tennis courts. In the center of the park, a natural freshwater spring bubbles into a stone basin.",
+        "Weeds and wildflowers have cracked the tennis courts. In the center of the park, a natural freshwater spring bubbles into a stone fountain.",
         [
             _c("Fill all water jugs", "red", water=4, morale=6),
             _c("Harvest medicinal herbs", "blue", add_item="herbal_poultice", food=1),
@@ -635,23 +536,22 @@ EVENTS: List[Dict[str, Any]] = [
             _c("Check window perimeter", "yellow", morale=3),
         ],
         scene="base",
-        locations=["Home Base", "12th Floor Apartment"],
+        locations=["Home Base"],
         night=True,
     ),
     _e(
         "base_knock_at_door",
-        "FOUR KNOCKS (RULE 1 TEST)",
-        "At 2:40 AM, four rapid, hollow knocks rattle the front deadbolt: KNOCK-KNOCK-KNOCK-KNOCK. "
-        "A pleasant, calm voice speaks through the keyhole: 'Open up, neighbor. The emergency broadcast says it's safe now.'\n"
-        "Your blood runs cold. RULE 1 echoes in your mind: NEVER OPEN IF THEY KNOCK FOUR TIMES.",
+        "THREE KNOCKS",
+        "At 2 a.m., three measured raps echo against your reinforced front door. "
+        "A woman's voice calls out, trembling: 'Please... the street is full of runners. I have clean water. Just let me sit on your rug until dawn.'",
         [
-            _c("Stay silent as stone (Rule 1)", "red", morale=6, humanity=2, log="You grip your weapon in silence. The breathing outside eventually slides away."),
-            _c("Look through peephole (Rule 2)", "blue", morale=-4, risk=0.3, log="You peek. A pair of milky, unblinking eyes are pressed directly against the glass!"),
-            _c("Fire shotgun through door!", "green", ammo=-1, combat="stalker", log="Wood splinters outward! A screeching entity tumbles backwards into the hall."),
-            _c("Unlock the deadbolt", "yellow", health=-35, infection=25, risk=0.8, log="You turn the deadbolt. A nightmare lunges through the threshold!"),
+            _c("Open the deadbolt", "red", water=2, humanity=8, risk=0.25, gemini=True),
+            _c("Pass bread through slot", "blue", food=-1, humanity=6, morale=4),
+            _c("Rack pistol slide loudly", "green", morale=-2, humanity=-4, log="The footsteps bolt down the fire escape."),
+            _c("Stay silent as stone", "yellow", humanity=-3, log="You hold your breath until the footsteps fade."),
         ],
         scene="base",
-        locations=["Home Base", "12th Floor Apartment"],
+        locations=["Home Base"],
         night=True,
     ),
 ]

@@ -338,56 +338,6 @@ body.night .badge-clock {
   overflow: hidden;
 }
 
-.canvas-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #090e0c;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-dim);
-}
-
-.view-toggles {
-  display: flex;
-  gap: 4px;
-}
-
-.view-btn {
-  background: #141c18;
-  color: var(--text-muted);
-  border: 1px solid #25332b;
-  border-radius: 3px;
-  padding: 3px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  cursor: pointer;
-  letter-spacing: 0.5px;
-  transition: all 0.12s;
-}
-
-.view-btn:hover {
-  color: #fff;
-  border-color: var(--phosphor-green);
-}
-
-.view-btn.active {
-  background: #1c2e22;
-  color: var(--phosphor-green);
-  border-color: var(--phosphor-green);
-  box-shadow: 0 0 6px rgba(82, 255, 131, 0.25);
-}
-
-.active-rule-badge {
-  font-size: 9px;
-  font-weight: 800;
-  color: var(--amber);
-  background: #211608;
-  border: 1px solid #4a3412;
-  border-radius: 3px;
-  padding: 2px 6px;
-  letter-spacing: 0.5px;
-}
-
 .canvas-wrapper {
   position: relative;
   width: 100%;

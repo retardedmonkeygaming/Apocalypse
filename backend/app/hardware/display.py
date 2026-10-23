@@ -43,9 +43,7 @@ class SevenSegment:
     def __init__(self):
         self.pins = []
         self.last = " "
-        self.active = False
-
-        if settings.hardware_enabled:
+        if settings.use_hardware:
             try:
                 from gpiozero import LED
 
@@ -59,18 +57,16 @@ class SevenSegment:
                     settings.pin_segment_g,
                 ]
                 self.pins = [LED(p) for p in pin_numbers]
-                self.active = True
-                print(f"[Hardware] 7-Segment Display ONLINE on BCM pins {pin_numbers}")
+                print(f"[Hardware] 7-Segment initialized on pins {pin_numbers}")
             except Exception as e:
-                print(f"[Hardware] 7-Segment initialization skipped: {e}")
+                print(f"[Hardware] 7-Segment failed: {e}")
                 self.pins = []
-        else:
-            print("[Hardware] 7-Segment Display running in software emulation mode")
 
     def show(self, char: str):
         if not char:
             char = " "
         self.last = str(char)[0]
+        # Match case or upper
         pattern = CHAR_MAP.get(self.last)
         if pattern is None:
             pattern = CHAR_MAP.get(self.last.upper(), CHAR_MAP[" "])
