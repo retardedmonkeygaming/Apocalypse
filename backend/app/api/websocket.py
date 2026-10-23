@@ -2,6 +2,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from typing import List
 import json
 
+
 class ConnectionManager:
     def __init__(self):
         self.active: List[WebSocket] = []
@@ -16,7 +17,7 @@ class ConnectionManager:
 
     async def broadcast(self, data: dict):
         message = json.dumps(data)
-        living = []
+        living: List[WebSocket] = []
         for ws in self.active:
             try:
                 await ws.send_text(message)
@@ -24,5 +25,6 @@ class ConnectionManager:
             except Exception:
                 pass
         self.active = living
+
 
 manager = ConnectionManager()

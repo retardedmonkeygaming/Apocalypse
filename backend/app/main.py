@@ -1,57 +1,80 @@
 import asyncio
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pathlib import Path
+
 from backend.app.core.config import settings
 from backend.app.game.engine import GameEngine
 from backend.app.api.routes import router, set_engine
 from backend.app.api.websocket import manager
 from backend.app.hardware.buttons import ButtonManager
 
-app = FastAPI(title="Apocalypse Terminal")
+app = FastAPI(title="Apocalypse Terminal", docs_url=None, redoc_url=None)
 
-# Paths
-BASE = Path(__file__).resolve().parent.parent.parent
+BASE = Path(settings.project_root or ".").resolve()
 FRONTEND = BASE / "frontend"
 
 app.mount("/static", StaticFiles(directory=FRONTEND / "static"), name="static")
 app.include_router(router)
 
+
+@app.get("/ping")
+async def ping():
+    await manager.broadcast({"type": "heartbeat", "ts": asyncio.get_event_loop().time()})
+    return {"ok": True}
+
 engine = GameEngine()
 set_engine(engine)
-
 button_mgr = ButtonManager()
 
-def make_handler(key: str):
+
+def _make_handler(key: str):
     async def handler():
         if key == "confirm":
-            await engine.use_medkit()
+            await engine.handle_confirm()
         else:
             await engine.handle_choice(key)
+
     return handler
 
-# Wire physical buttons
-for color in ["red", "blue", "green", "yellow"]:
-    button_mgr.on(color, lambda k=color: asyncio.create_task(make_handler(k)()))
-button_mgr.on("confirm", lambda: asyncio.create_task(make_handler("confirm")()))
+
+def _wire_button(name: str, key: str):
+    button_mgr.on(name, lambda k=key: asyncio.create_task(_make_handler(k)()))
+
+
+_wire_button("red", "red")
+_wire_button("blue", "blue")
+_wire_button("green", "green")
+_wire_button("yellow", "yellow")
+_wire_button("confirm", "confirm")
+
 
 @app.on_event("startup")
 async def startup():
     async def broadcaster(data):
         await manager.broadcast(data)
+
     engine.set_broadcast(broadcaster)
-    # Start with an event if fresh
-    if not engine.state.current_event and not engine.state.game_over:
-        await engine.next_event()
-    print(f"Apocalypse Terminal running on http://{settings.host}:{settings.port}")
+    engine.display.show_health(engine.state.player.health)
+    print(f"Apocalypse Terminal  http://{settings.host}:{settings.port}")
+    print(f"Hardware={'on' if settings.use_hardware else 'off'}  Gemini={'on' if engine.gemini.enabled else 'off'}")
+
 
 @app.get("/")
 async def index():
     return FileResponse(FRONTEND / "templates" / "index.html")
 
+
+@app.get("/health")
+async def health():
+    return {"ok": True, "hardware": settings.use_hardware, "gemini": engine.gemini.enabled}
+
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "backend.app.main:app",
         host=settings.host,

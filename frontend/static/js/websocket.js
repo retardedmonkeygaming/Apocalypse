@@ -9,17 +9,17 @@ class GameSocket {
   connect() {
     this.ws = new WebSocket(this.url);
     this.ws.onopen = () => {
-      console.log("WS connected");
       this.emit("status", "CONNECTED");
     };
     this.ws.onclose = () => {
-      this.emit("status", "RECONNECTING...");
+      this.emit("status", "RECONNECTING…");
       setTimeout(() => this.connect(), this.reconnectDelay);
     };
     this.ws.onerror = () => this.emit("status", "ERROR");
     this.ws.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
+        if (data.type === "pong") return;
         this.emit("state", data);
       } catch (err) {
         console.error(err);

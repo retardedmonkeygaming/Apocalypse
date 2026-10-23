@@ -3,58 +3,87 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>APOCALYPSE TERMINAL</title>
+  <title>APOCALYPSE TERMINAL — Channel 7</title>
   <link rel="stylesheet" href="/static/css/style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
 </head>
 <body>
   <div id="crt">
     <div id="scanlines"></div>
+    <div id="vignette"></div>
+    <div id="chroma"></div>
+
     <header id="hud">
+      <div class="brand">CH.7</div>
       <div class="stat">DAY <span id="day">1</span></div>
-      <div class="stat">HP <span id="health">100</span></div>
-      <div class="stat">INF <span id="infection">0</span>%</div>
-      <div class="stat">MOR <span id="morale">70</span></div>
-      <div class="stat">LOC <span id="location">Home Base</span></div>
+      <div class="stat" id="clock">DAY</div>
+      <div class="stat" id="weather">CLEAR</div>
+      <div class="stat loc">LOC <span id="location">Home Base</span></div>
+      <div id="seg" class="seg" title="Health tens digit (mirrors 7-segment)">
+        <div class="seg-d a"></div><div class="seg-d b"></div><div class="seg-d c"></div>
+        <div class="seg-d d"></div><div class="seg-d e"></div><div class="seg-d f"></div>
+        <div class="seg-d g"></div>
+      </div>
     </header>
+
+    <section id="bars">
+      <label>HP <div class="bar"><i id="bar-hp"></i></div><span id="health">100</span></label>
+      <label>INF <div class="bar inf"><i id="bar-inf"></i></div><span id="infection">0</span></label>
+      <label>MOR <div class="bar mor"><i id="bar-mor"></i></div><span id="morale">70</span></label>
+      <label>HUM <div class="bar hum"><i id="bar-hum"></i></div><span id="humanity">50</span></label>
+      <label>FORT <div class="bar fort"><i id="bar-fort"></i></div><span id="fort">1</span></label>
+    </section>
 
     <main id="game-area">
       <div id="scene">
-        <div id="pixel-scene"></div>
+        <canvas id="view" width="320" height="180"></canvas>
         <div id="event-title">WAITING...</div>
         <div id="event-text"></div>
+        <div id="combat-log"></div>
       </div>
-
-      <aside id="journal">
-        <h3>SURVIVOR LOG</h3>
-        <div id="log"></div>
+      <aside id="side">
+        <div id="party">
+          <h3>UNDER THIS ROOF</h3>
+          <div id="party-list"></div>
+        </div>
+        <div id="inventory">
+          <h3>PACK <span id="inv-count">0/8</span></h3>
+          <div id="inv-list"></div>
+        </div>
+        <div id="journal">
+          <h3>SURVIVOR LOG</h3>
+          <div id="log"></div>
+        </div>
       </aside>
     </main>
 
     <section id="resources">
-      <span>🍖 <span id="food">5</span></span>
-      <span>💧 <span id="water">5</span></span>
-      <span>🔫 <span id="ammo">10</span></span>
-      <span>🔧 <span id="scrap">0</span></span>
-      <span>💊 <span id="medkits">1</span></span>
+      <span>FOOD <b id="food">5</b></span>
+      <span>WATER <b id="water">5</b></span>
+      <span>AMMO <b id="ammo">8</b></span>
+      <span>SCRAP <b id="scrap">2</b></span>
+      <span>KITS <b id="medkits">1</b></span>
+      <span>ARMS <b id="weapon">FISTS</b></span>
+      <span>STAGE <b id="stage">CLEAN</b></span>
     </section>
 
     <section id="choices">
-      <button class="choice" data-key="red" id="btn-red">RED</button>
-      <button class="choice" data-key="blue" id="btn-blue">BLUE</button>
-      <button class="choice" data-key="green" id="btn-green">GREEN</button>
-      <button class="choice" data-key="yellow" id="btn-yellow">YELLOW</button>
-      <button class="choice utility" data-key="confirm" id="btn-confirm">MEDKIT</button>
+      <button class="choice" data-key="red" id="btn-red"><i></i><span>RED</span></button>
+      <button class="choice" data-key="blue" id="btn-blue"><i></i><span>BLUE</span></button>
+      <button class="choice" data-key="green" id="btn-green"><i></i><span>GREEN</span></button>
+      <button class="choice" data-key="yellow" id="btn-yellow"><i></i><span>YELLOW</span></button>
+      <button class="choice utility" data-key="confirm" id="btn-confirm"><i></i><span>REST</span></button>
     </section>
 
     <footer>
-      <button id="new-game">NEW GAME</button>
-      <span id="status">CONNECTED</span>
+      <button id="new-game">NEW RUN</button>
+      <span class="hint">1–4 choose · Space confirm · hardware mirrors this screen</span>
+      <span id="status">CONNECTING</span>
     </footer>
   </div>
 
-  <script src="/static/js/websocket.js"></script>
+  <script src="/static/js/audio.js"></script>
   <script src="/static/js/pixel.js"></script>
+  <script src="/static/js/websocket.js"></script>
   <script src="/static/js/ui.js"></script>
   <script src="/static/js/game.js"></script>
 </body>
