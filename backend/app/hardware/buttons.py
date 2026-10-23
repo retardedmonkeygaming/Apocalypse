@@ -6,7 +6,7 @@ class ButtonManager:
     """
     Hardware Arcade Button manager via gpiozero.
     5 arcade pushbuttons: Red, Blue, Green, Yellow, Confirm.
-    Configured with pull_up=True (active low) and 0.1s bounce time.
+    Configured with pull_up=True (active low) and 0.1s debounce time.
     Supports software triggering for dual hardware/WebUI mirroring.
     """
 
@@ -19,7 +19,9 @@ class ButtonManager:
             "confirm": None,
         }
         self._buttons: Dict[str, Optional[object]] = {}
-        if settings.use_hardware:
+        self.active = False
+
+        if settings.hardware_enabled:
             try:
                 from gpiozero import Button
 
@@ -34,9 +36,13 @@ class ButtonManager:
                     btn = Button(pin, pull_up=True, bounce_time=0.1)
                     btn.when_pressed = lambda n=name: self._on_press(n)
                     self._buttons[name] = btn
-                print(f"[Hardware] 5 Arcade Buttons initialized on pins: {mapping}")
+                self.active = True
+                print(f"[Hardware] 5 Arcade Buttons ONLINE on BCM pins {mapping}")
             except Exception as e:
-                print(f"[Hardware] Buttons initialization failed: {e} — continuing in software mode")
+                print(f"[Hardware] Arcade Buttons could not claim pins: {e}")
+                print("[Hardware] Tip for Raspberry Pi OS: Ensure user is in 'gpio' group (`sudo usermod -aG gpio $USER`) or install `sudo apt install python3-rpi-lgpio`")
+        else:
+            print("[Hardware] Arcade Buttons running in software emulation mode (WebUI active)")
 
     def _on_press(self, name: str):
         cb = self.callbacks.get(name)

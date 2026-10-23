@@ -43,8 +43,9 @@ _wire_button("confirm", "confirm")
 async def lifespan(app: FastAPI):
     engine.set_broadcast(manager.broadcast)
     engine.display.show_health(engine.state.player.health)
+    hw_status = "ON (Physical GPIO)" if settings.hardware_enabled else "OFF (WebUI Emulation)"
     print(f"Apocalypse Terminal  http://{settings.host}:{settings.port}")
-    print(f"Hardware={'on' if settings.use_hardware else 'off'}  Gemini={'on' if engine.gemini.enabled else 'off'}")
+    print(f"Hardware={hw_status}  Gemini={'ON' if engine.gemini.enabled else 'OFF'}")
     yield
 
 
@@ -70,7 +71,14 @@ async def index():
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "hardware": settings.use_hardware, "gemini": engine.gemini.enabled}
+    return {
+        "ok": True,
+        "hardware": settings.hardware_enabled,
+        "buttons_active": button_mgr.active,
+        "display_active": engine.display.active,
+        "buzzer_active": engine.buzzer.active,
+        "gemini": engine.gemini.enabled,
+    }
 
 
 if __name__ == "__main__":

@@ -12,15 +12,20 @@ class Buzzer:
 
     def __init__(self):
         self.device = None
-        if settings.use_hardware:
+        self.active = False
+
+        if settings.hardware_enabled:
             try:
                 from gpiozero import PWMOutputDevice
 
                 self.device = PWMOutputDevice(settings.pin_buzzer, frequency=440, initial_value=0)
-                print(f"[Hardware] Passive Buzzer initialized on BCM pin {settings.pin_buzzer}")
+                self.active = True
+                print(f"[Hardware] Passive Buzzer ONLINE on BCM pin {settings.pin_buzzer}")
             except Exception as e:
-                print(f"[Hardware] Buzzer initialization failed: {e}")
+                print(f"[Hardware] Buzzer initialization skipped: {e}")
                 self.device = None
+        else:
+            print("[Hardware] Buzzer running in Web Audio emulation mode")
 
     async def tone(self, freq: int = 440, duration: float = 0.12, duty: float = 0.5):
         if not self.device:
