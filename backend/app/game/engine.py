@@ -65,9 +65,9 @@ class GameEngine:
         self.state.world.npcs["kid"]["short"] = kid
         self.state.world.weather = random.choice(["clear", "overcast", "clear"])
         self.state.log = [
-            "You wake in a boarded room that still smells like someone else's tea.",
-            "The city beyond the plywood is practicing being over.",
-            f"Day 1. Weather: {self.state.world.weather}.",
+            "You awaken behind reinforced plywood in the boarded apartment.",
+            "Outside, the city hums with rain, rust, and the relentless dead.",
+            f"Day 1. Weather: {self.state.world.weather.upper()}. Channel 7 is on the air.",
         ]
         self._hub_menu()
         self.display.show_health(self.state.player.health)
@@ -75,7 +75,9 @@ class GameEngine:
         self.state.save()
         await self.broadcast()
 
-    # ----- menus -----
+    # ─────────────────────────────────────────────────────────────
+    # MENUS & HUBS
+    # ─────────────────────────────────────────────────────────────
 
     def _choices(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
@@ -103,122 +105,146 @@ class GameEngine:
         s.menu = ""
         s.world.location = "Home Base"
         party = s.party()
-        names = ", ".join(p["short"] for p in party) if party else "no one else breathing here"
-        weather = s.world.weather
-        clock = "Night" if s.world.is_night else "Day"
+        names = ", ".join(p["short"] for p in party) if party else "alone with the deadbolt"
+        weather = s.world.weather.upper()
+        clock = "NIGHT" if s.world.is_night else "DAY"
         stage = STAGE_LABEL[s.infection_stage()]
         text = (
-            f"{clock} {s.world.day}, {weather}. Fortification {s.world.fortification}/10.\n"
-            f"Infection: {stage}. Humanity {s.player.humanity}. Under this roof: {names}.\n"
-            f"Actions left this stretch: {s.world.actions_left}. "
-            f"{LOCATIONS['Home Base']['blurb']}"
+            f"{clock} {s.world.day} · {weather} · Base Fortification: {s.world.fortification}/10.\n"
+            f"Infection: {stage} ({s.player.infection}%) · Humanity: {s.player.humanity}/100.\n"
+            f"Under this roof: {names}.\n"
+            f"Actions remaining: {s.world.actions_left}. Confirm button: REST."
         )
         choices = [
             {"label": "Scavenge", "effect": {"open": "locations"}},
-            {"label": "Craft", "effect": {"open": "craft"}},
-            {"label": "Fortify / camp", "effect": {"open": "fortify"}},
-            {"label": "People / radio", "effect": {"open": "talk"}},
+            {"label": "Workbench", "effect": {"open": "craft"}},
+            {"label": "Fortify Base", "effect": {"open": "fortify"}},
+            {"label": "People / Radio", "effect": {"open": "talk"}},
         ]
         self._show(f"HOME BASE — {clock} {s.world.day}", text, choices, "base", "hub", "REST")
+        self.display.show("H" if not s.world.is_night else "n")
 
     def _location_menu(self):
         known = [n for n in self.state.world.known_locations if n != "Home Base"]
         if not known:
             known = ["Streets"]
+
+        # Progressively discover new sites as days advance
         day = self.state.world.day
-        if day >= 3:
+        if day >= 2:
             for extra in ("Warehouse", "Church", "Radio Tower", "Subway Tunnels", "Gas Station"):
                 self._discover(extra)
-            known = [n for n in self.state.world.known_locations if n != "Home Base"]
-        if day >= 7:
-            for extra in ("Military Checkpoint", "School", "Docks"):
+        if day >= 5:
+            for extra in ("Military Checkpoint", "School", "Docks", "Overgrown Park", "Ruined Pharmacy"):
                 self._discover(extra)
-            known = [n for n in self.state.world.known_locations if n != "Home Base"]
+
+        known = [n for n in self.state.world.known_locations if n != "Home Base"]
+
+        # Show up to 4 locations per menu slice
         if len(known) > 4:
-            off = (day + (1 if self.state.world.is_night else 0)) % len(known)
-            shown = (known + known)[off : off + 4]
+            offset = (day + (2 if self.state.world.is_night else 0)) % len(known)
+            shown = (known + known)[offset : offset + 4]
         else:
             shown = known[:4]
+
         choices = []
         for name in shown:
-            choices.append({"label": name, "effect": {"expedition": name}})
+            risk_pct = int(LOCATIONS.get(name, {}).get("risk", 0.3) * 100)
+            choices.append({"label": f"{name} ({risk_pct}% risk)", "effect": {"expedition": name}})
+
         self.state.menu = "locations"
-        blurb = "Pick a scar on the map. Risk travels with you. Night makes it honest."
-        self._show("LEAVE THE HOUSE", blurb, choices, "map", "menu", "BACK")
+        blurb = "Select a coordinate on the city map. Risk scales with distance, fog, and night."
+        self._show("LEAVE THE APARTMENT", blurb, choices, "map", "menu", "BACK")
+        self.display.show("L")
 
     def _craft_menu(self):
         ready: List[Dict[str, Any]] = []
+        p = self.state.player
+        w = self.state.world
+
         for rec in RECIPES:
-            if rec.get("flag") and self.state.world.flags.get(rec["flag"]):
+            # Skip if camp flag already constructed
+            if rec.get("flag") and w.flags.get(rec["flag"]):
                 continue
-            if rec.get("need_item") and rec["need_item"] not in self.state.player.inventory:
+            if rec.get("need_item") and rec["need_item"] not in p.inventory:
                 continue
-            if rec.get("give_item") == "pipe" and "pipe" in self.state.player.inventory:
-                continue
-            if rec.get("give_item") == "mask" and "mask" in self.state.player.inventory:
+            if rec.get("give_item") in p.inventory and rec.get("give_item") != "molotov":
                 continue
             if not self._can_afford(rec["cost"]):
                 continue
+
             ready.append({"label": rec["name"], "effect": {"craft": rec["id"]}})
+
         if not ready:
             ready = [{"label": "Need more scrap", "effect": {"open": "hub"}}]
+
         while len(ready) < 4:
-            ready.append({"label": "Back", "effect": {"open": "hub"}})
+            ready.append({"label": "Return to Hub", "effect": {"open": "hub"}})
+
         self.state.menu = "craft"
         self._show(
             "WORKBENCH",
-            "Tape, teeth, patience. Four things at a time. Confirm to step away.",
+            "Scrap metal, friction tape, and patient hands. Select an item to assemble. Confirm to return.",
             ready[:4],
             "craft",
             "menu",
             "BACK",
         )
+        self.display.show("c")
 
     def _fortify_menu(self):
         f = self.state.world.fortification
+        w = self.state.world
         text = (
-            f"Boards: {f}/10. Alarm: {'yes' if self.state.world.flags.get('alarm') else 'no'}. "
-            "Nailing costs a stretch of daylight. Resting spends food and dares the night."
+            f"Barricades: {f}/10. Alarm: {'YES' if w.flags.get('alarm') else 'NO'}. "
+            f"Med Station: {'YES' if w.flags.get('medbay') else 'NO'}.\n"
+            "Reinforcing nails cost scrap and daytime. Resting spends food & water to heal."
         )
         choices: List[Dict[str, Any]] = [
-            {"label": "Nail boards (2 scrap)", "effect": {"fortify_now": True}},
-            {"label": "Keep watch", "effect": {"watch": True}},
-            {"label": "Sleep here", "effect": {"rest": True}},
-            {"label": "Back", "effect": {"open": "hub"}},
+            {"label": "Nail Boards (2 Scrap)", "effect": {"fortify_now": True}},
+            {"label": "Keep Watch", "effect": {"watch": True}},
+            {"label": "Rest & Sleep", "effect": {"rest": True}},
+            {"label": "Return to Hub", "effect": {"open": "hub"}},
         ]
         self.state.menu = "fortify"
-        self._show("FORTIFY", text, choices, "base", "menu", "BACK")
+        self._show("FORTIFY DEFENSES", text, choices, "base", "menu", "BACK")
+        self.display.show("F")
 
     def _talk_menu(self):
         party = [p for p in self.state.party() if p.get("alive")]
         choices: List[Dict[str, Any]] = []
-        for p in party[:3]:
-            choices.append({"label": f"Talk to {p['short']}", "effect": {"talk": p["id"]}})
-        choices.append({"label": "Radio / Channel 7", "effect": {"talk": "radio"}})
-        if len(choices) < 4:
-            choices.append({"label": "Journal", "effect": {"talk": "journal"}})
+        for p in party[:2]:
+            choices.append({"label": f"Speak to {p['short']}", "effect": {"talk": p["id"]}})
+        choices.append({"label": "Channel 7 Radio", "effect": {"talk": "radio"}})
+        choices.append({"label": "Survivor Log", "effect": {"talk": "journal"}})
+
+        while len(choices) < 4:
+            choices.append({"label": "Return", "effect": {"open": "hub"}})
+
         self.state.menu = "talk"
         self._show(
-            "THE LIVING",
-            "People are not resources, except when the day insists they are. Confirm to return.",
+            "VOICES IN THE ROOM",
+            "People are not just mouths to feed; they are the only reason to survive until tomorrow.",
             choices[:4],
             "talk",
             "menu",
             "BACK",
         )
+        self.display.show("H")
 
     def _combat_menu(self):
         c = self.state.combat
-        lines = " · ".join(c.log[-3:])
-        text = f"{c.enemy_name}  HP {max(0, c.enemy_hp)}/{c.enemy_max}\n{lines}"
+        lines = " · ".join(c.log[-2:]) if c.log else "Combat underway."
+        text = f"{c.enemy_name.upper()}  HP: {max(0, c.enemy_hp)}/{c.enemy_max}\nIntent: {c.enemy_intent}\n{lines}"
         choices: List[Dict[str, Any]] = [
-            {"label": "Strike", "effect": {"combat_act": "attack"}},
-            {"label": "Guard", "effect": {"combat_act": "defend"}},
-            {"label": "Fire", "effect": {"combat_act": "shoot"}},
-            {"label": "Flee", "effect": {"combat_act": "flee"}},
+            {"label": f"Strike ({WEAPONS.get(self.state.player.weapon, WEAPONS['fists'])['name']})", "effect": {"combat_act": "attack"}},
+            {"label": "Guard (Block Bite)", "effect": {"combat_act": "defend"}},
+            {"label": f"Fire Gun ({self.state.player.ammo} rnds)", "effect": {"combat_act": "shoot"}},
+            {"label": "Flee to Cover", "effect": {"combat_act": "flee"}},
         ]
         if "molotov" in self.state.player.inventory:
-            choices[3] = {"label": "Molotov", "effect": {"combat_act": "molotov"}}
+            choices[3] = {"label": "Throw Molotov", "effect": {"combat_act": "molotov"}}
+
         self.state.mode = "combat"
         self.state.scene = "combat"
         self.state.confirm_label = "MEDKIT"
@@ -230,24 +256,27 @@ class GameEngine:
             "choices": self._choices(choices),
             "scene": "combat",
         }
+        self.display.show("C")
 
     def _ending_menu(self):
         s = self.state
         self._show(
-            s.ending_title or ("EXTRACTION" if s.victory else "YOU DIED"),
-            s.ending_text or "The run is over.",
+            s.ending_title or ("EXTRACTION" if s.victory else "COLD FLOOR"),
+            s.ending_text or "The run has concluded.",
             [
-                {"label": "New run", "effect": {"restart": True}},
-                {"label": "Sit with it", "effect": {}},
-                {"label": "Read the log", "effect": {}},
-                {"label": "Again", "effect": {"restart": True}},
+                {"label": "Start New Run", "effect": {"restart": True}},
+                {"label": "Sit with Silence", "effect": {}},
+                {"label": "Review the Log", "effect": {}},
+                {"label": "Try Again", "effect": {"restart": True}},
             ],
             "ending",
             "ending",
             "—",
         )
 
-    # ----- input -----
+    # ─────────────────────────────────────────────────────────────
+    # INPUT HANDLING
+    # ─────────────────────────────────────────────────────────────
 
     async def handle_choice(self, key: str):
         async with self._lock:
@@ -257,24 +286,38 @@ class GameEngine:
                 if choice and choice.get("effect", {}).get("restart"):
                     await self.start_new_game()
                 return
+
             if not self.state.waiting_for_choice or not self.state.current_event:
                 return
+
             choices = self.state.current_event.get("choices", [])
             choice = next((c for c in choices if c["key"] == key), None)
             if not choice:
                 return
+
             if not self._choice_allowed(choice):
-                self.state.log.append("You cannot do that — missing something, or someone.")
+                self.state.log.append("You cannot do that right now — prerequisite not met.")
                 await self.broadcast()
                 return
+
             self.state.last_action = choice["label"]
             self.state.log.append(f"> {choice['label']}")
             self.state.waiting_for_choice = False
-            await self.apply_effect(choice.get("effect") or {})
-            if self.state.game_over or self.state.combat.active:
-                await self._after_effect()
-                return
+
+            # Optional Gemini hook for emergent flavor text
+            eff = choice.get("effect") or {}
+            if eff.get("gemini") and self.gemini.enabled:
+                asyncio.create_task(self._trigger_gemini_flavor(choice["label"]))
+
+            await self.apply_effect(eff)
             await self._after_effect()
+
+    async def _trigger_gemini_flavor(self, choice_label: str):
+        ev_title = self.state.current_event.get("title", "Survivor Choice") if self.state.current_event else "Survivor Choice"
+        flavor = await self.gemini.generate_flavor(ev_title, choice_label, self.state)
+        if flavor:
+            self.state.log.append(f"📻 \"{flavor}\"")
+            await self.broadcast()
 
     async def handle_confirm(self):
         async with self._lock:
@@ -295,28 +338,33 @@ class GameEngine:
     async def use_medkit(self):
         p = self.state.player
         if p.medkits <= 0:
-            self.state.log.append("The kit is empty. You already knew.")
+            self.state.log.append("Your medical kit is empty. Clean bandages are gone.")
             self.state.fx = "miss"
             await self.buzzer.low_health()
             await self.broadcast()
             return
+
         if p.health >= 100 and p.infection <= 0:
-            self.state.log.append("You are already the best version of hurt.")
+            self.state.log.append("You are already patched up as best as medicine allows.")
             await self.broadcast()
             return
+
         p.medkits -= 1
-        p.health = min(100, p.health + 32)
-        p.infection = max(0, p.infection - 8)
-        self.state.log.append("Gauze, sting, a brief republic of not dying.")
+        p.health = min(100, p.health + 35)
+        p.infection = max(0, p.infection - 10)
+        self.state.log.append("Alcohol sting, fresh gauze wrapped tight. Vitality restored.")
         self.state.fx = "heal"
         self.display.show_health(p.health)
         await self.buzzer.success()
+
         if self.state.combat.active:
             self._combat_menu()
         self.state.save()
         await self.broadcast()
 
-    # ----- effects -----
+    # ─────────────────────────────────────────────────────────────
+    # EFFECT RESOLUTION
+    # ─────────────────────────────────────────────────────────────
 
     def _choice_allowed(self, choice: Dict[str, Any]) -> bool:
         eff = choice.get("effect") or {}
@@ -352,8 +400,8 @@ class GameEngine:
             await self._fortify()
             return
         if effect.get("watch"):
-            self.state.player.morale = min(100, self.state.player.morale + 6)
-            self.state.log.append("You keep the window. The city performs being dead.")
+            self.state.player.morale = min(100, self.state.player.morale + 8)
+            self.state.log.append("You scan the rooftops through the periscope. The city breathes in gray silence.")
             await self._spend_action()
             self._hub_menu()
             return
@@ -370,70 +418,54 @@ class GameEngine:
         was_event = self.state.mode == "event"
         p, w = self.state.player, self.state.world
 
+        # Consume item
         if effect.get("consume_item"):
             item = effect["consume_item"]
-            if item in ("medkits",):
-                pass
-            elif item in p.inventory:
-                if not effect.get("keep_item"):
-                    p.inventory.remove(item)
-            elif item == "molotov":
-                self.state.log.append("No bottle. The thought of fire will have to do.")
-            elif item == "holy_charm" and "holy_charm" not in p.inventory:
-                self.state.log.append("Miriam's charm is a story you do not have.")
-            elif item == "tunnel_key" and "tunnel_key" not in p.inventory:
-                self.state.log.append("The tunnels do not know you yet.")
-                return
-            elif item == "antibiotics" and "antibiotics" not in p.inventory:
-                self.state.log.append("The bottle is imaginary. The fever is not.")
-            elif item == "photo" and "photo" not in p.inventory:
-                self.state.log.append("No photo to carry.")
+            if item in p.inventory:
+                p.inventory.remove(item)
 
+        # Combat trigger
         if effect.get("combat"):
             self._begin_combat(effect["combat"])
 
+        # Risk resolution
         if "risk" in effect:
             chance = float(effect["risk"])
             if w.weather == "storm":
                 chance += 0.08
             if w.is_night:
-                chance += 0.1
+                chance += 0.12
             if w.location == "Home Base":
                 chance -= w.fortification * 0.04
+
             if random.random() < max(0.05, chance):
-                dmg = random.randint(8, 18)
+                dmg = random.randint(10, 20)
                 p.health -= dmg
                 if random.random() < 0.35:
-                    p.infection += random.randint(4, 10)
-                self.state.log.append("It goes wrong in a small, professional way.")
+                    p.infection += random.randint(5, 12)
+                self.state.log.append("The scavenging run takes a violent turn! You take damage.")
                 self.state.fx = "shake"
                 await self.buzzer.danger()
             else:
                 await self.buzzer.success()
                 self.state.fx = "success"
 
-        for k in (
-            "health",
-            "infection",
-            "morale",
-            "humanity",
-            "food",
-            "water",
-            "ammo",
-            "scrap",
-            "medkits",
-        ):
+        # Resources & Stats
+        for k in ("health", "infection", "morale", "humanity", "food", "water", "ammo", "scrap", "medkits"):
             if k in effect:
                 setattr(p, k, getattr(p, k) + int(effect[k]))
                 if int(effect[k]) > 0 and k in ("food", "water", "ammo", "scrap", "medkits"):
                     self.state.fx = self.state.fx or "success"
+
+        if "ammo_add" in effect:
+            p.ammo += int(effect["ammo_add"])
 
         if "fort" in effect:
             w.fortification += int(effect["fort"])
         if effect.get("location"):
             w.location = effect["location"]
             self._discover(effect["location"])
-            self.state.log.append(f"Moved to {effect['location']}.")
+            self.state.log.append(f"Arrived at {effect['location']}.")
         if effect.get("discover") or effect.get("discover2"):
             for name in (effect.get("discover"), effect.get("discover2")):
                 if name:
@@ -442,7 +474,7 @@ class GameEngine:
             self._give_item(effect["add_item"])
         if effect.get("weapon") and effect["weapon"] in WEAPONS:
             p.weapon = effect["weapon"]
-            self.state.log.append(f"Armed: {WEAPONS[p.weapon]['name']}.")
+            self.state.log.append(f"Equipped: {WEAPONS[p.weapon]['name']}.")
         if effect.get("flags"):
             w.flags.update(effect["flags"])
         if effect.get("npc_join"):
@@ -452,27 +484,23 @@ class GameEngine:
         if effect.get("log"):
             self.state.log.append(effect["log"])
 
-        if effect.get("flags"):
-            jack = {
-                "extract_halcyon",
-                "chose_docks",
-                "chose_ghost_path",
-                "chose_sermon",
-                "lena_sacrifice",
-                "marcus_broadcast",
-                "chose_quiet",
-            }
-            if any(effect["flags"].get(k) for k in jack):
-                await self._trigger_ending()
-                return
-
-        if effect.get("ending_if") == "last_light" and w.flags.get("lena_sacrifice"):
+        # Check ending triggers from narrative flags
+        ending_triggers = {
+            "extract_halcyon",
+            "chose_docks",
+            "chose_ghost_path",
+            "chose_sermon",
+            "lena_sacrifice",
+            "marcus_broadcast",
+        }
+        if any(w.flags.get(k) for k in ending_triggers):
             await self._trigger_ending()
             return
 
         self.state.clamp()
         self.display.show_health(p.health)
 
+        # Handle menu redirects
         if effect.get("open") == "locations":
             self._location_menu()
             return
@@ -505,11 +533,15 @@ class GameEngine:
         if self.state.combat.active:
             await self.buzzer.danger()
 
+    # ─────────────────────────────────────────────────────────────
+    # COMBAT
+    # ─────────────────────────────────────────────────────────────
+
     def _begin_combat(self, enemy_id: str):
         data = make_combat(enemy_id)
         self.state.combat = CombatState(**data)
         self.state.mode = "combat"
-        self.state.log.append(f"── {self.state.combat.enemy_name} ──")
+        self.state.log.append(f"── COMBAT ENGAGED: {self.state.combat.enemy_name.upper()} ──")
         self._combat_menu()
 
     async def _combat_act(self, action: str):
@@ -517,22 +549,39 @@ class GameEngine:
         for n in result.get("notes", []):
             self.state.log.append(n)
         self.state.fx = result.get("fx", "hit")
+
+        # Sound feedback
+        if self.state.fx == "gun":
+            await self.buzzer.combat_gun()
+        elif self.state.fx == "fire":
+            await self.buzzer.combat_fire()
+        elif self.state.fx == "hit":
+            await self.buzzer.combat_hit()
+
         loot = result.get("loot") or {}
         for k, v in loot.items():
             setattr(self.state.player, k, getattr(self.state.player, k) + v)
-            self.state.log.append(f"Took {v} {k}.")
+            self.state.log.append(f"Scavenged {v} {k}.")
+
         self.display.show_health(self.state.player.health)
+
         if result.get("died"):
             self.state.world.flags["death_cause"] = "dead"
             await self._trigger_ending()
             return
+
         if result.get("over"):
             self.state.combat = CombatState()
             await self._spend_action()
             if not self.state.game_over:
                 self._hub_menu()
             return
+
         self._combat_menu()
+
+    # ─────────────────────────────────────────────────────────────
+    # EXPEDITIONS & TIME
+    # ─────────────────────────────────────────────────────────────
 
     async def _start_expedition(self, location: str):
         self._discover(location)
@@ -540,17 +589,19 @@ class GameEngine:
         self.state.mode = "event"
         self.state.menu = ""
         blurb = LOCATIONS.get(location, {}).get("blurb", "")
-        self.state.log.append(f"── {location} ──")
+        self.state.log.append(f"── EXPEDITION: {location.upper()} ──")
         if blurb:
             self.state.log.append(blurb)
+
         ev = select_event(self.state, location)
         self._present_event(ev)
 
     def _present_event(self, ev: Dict[str, Any]):
         if ev.get("id") not in self.state.world.seen_events:
             self.state.world.seen_events.append(ev["id"])
-            if len(self.state.world.seen_events) > 120:
-                self.state.world.seen_events = self.state.world.seen_events[-120:]
+            if len(self.state.world.seen_events) > 150:
+                self.state.world.seen_events = self.state.world.seen_events[-150:]
+
         self.state.mode = "event"
         self.state.scene = ev.get("scene") or LOCATIONS.get(self.state.world.location, {}).get("id", "streets")
         self.state.waiting_for_choice = True
@@ -563,58 +614,69 @@ class GameEngine:
             "scene": self.state.scene,
         }
         self.state.log.append(f"── {ev['title']} ──")
-        self.state.log.append(ev["text"][:180])
+        self.state.log.append(ev["text"][:220])
 
     async def _craft(self, recipe_id: str):
         rec = next((r for r in RECIPES if r["id"] == recipe_id), None)
         if not rec:
             self._hub_menu()
             return
+
         if rec.get("need_item") and rec["need_item"] not in self.state.player.inventory:
-            self.state.log.append("Missing a part that is more than scrap.")
+            self.state.log.append("Missing required specialty components.")
             self._craft_menu()
             return
+
         if not self._can_afford(rec["cost"]):
-            self.state.log.append("The workbench laughs in empty.")
+            self.state.log.append("Insufficient scrap or resources for this recipe.")
             self._craft_menu()
             return
+
         p = self.state.player
         for k, v in rec["cost"].items():
             setattr(p, k, getattr(p, k) - v)
+
         if rec.get("give_item"):
             self._give_item(rec["give_item"])
+        if rec.get("give_res"):
+            for k, v in rec["give_res"].items():
+                setattr(p, k, getattr(p, k) + v)
         if rec.get("weapon"):
             p.weapon = rec["weapon"]
         if rec.get("fort"):
             self.state.world.fortification += rec["fort"]
         if rec.get("flag"):
             self.state.world.flags[rec["flag"]] = True
-        self.state.log.append(rec.get("log") or f"Crafted {rec['name']}.")
+
+        p.craft_count += 1
+        self.state.log.append(rec.get("log") or f"Assembled {rec['name']}.")
         self.state.fx = "craft"
         await self.buzzer.success()
         self._hub_menu()
 
     async def _fortify(self):
         if self.state.player.scrap < 2:
-            self.state.log.append("Scrap is a theory.")
+            self.state.log.append("You lack the 2 scrap required to nail fresh boards.")
             self._fortify_menu()
             return
         self.state.player.scrap -= 2
-        self.state.world.fortification += 1
-        self.state.log.append("The door believes you a little more.")
+        self.state.world.fortification = min(10, self.state.world.fortification + 1)
+        self.state.log.append(f"Heavy timbers driven across the frame. Fortification is now {self.state.world.fortification}/10.")
         await self._spend_action()
         self._hub_menu()
 
     async def _rest(self):
         p, w = self.state.player, self.state.world
-        heal = 18 + (8 if w.flags.get("medbay") else 0)
+        heal = 20 + (10 if w.flags.get("medbay") else 0)
         p.health = min(100, p.health + heal)
-        p.morale = min(100, p.morale + 4)
-        self.state.log.append("Sleep is a thin country. You get a visa anyway.")
+        p.morale = min(100, p.morale + 6)
+        self.state.log.append(f"You rest upon a canvas cot. Sleep restores {heal} health.")
+
         if w.is_night:
             await self._dawn()
         else:
             await self._spend_action()
+
         if not self.state.game_over:
             self._hub_menu()
 
@@ -623,74 +685,80 @@ class GameEngine:
         if who == "radio":
             if s.world.flags.get("radio_repaired"):
                 text = (
-                    "Channel 7 is a room. Marcus — or the recording of a braver hour — talks about walls, "
-                    "names, and a truck that may be a story wearing headlights."
+                    "Channel 7 comes through crisp and clear over the boosted antenna. "
+                    "Marcus Hale speaks of weather, survivor routes, and Fort Halcyon Mile 18."
                 )
                 choices: List[Dict[str, Any]] = [
-                    {"label": "Ask for Halcyon", "effect": {"flags": {"heard_halcyon": True}, "morale": 4, "gemini": True}},
+                    {"label": "Listen to News", "effect": {"flags": {"heard_halcyon": True}, "morale": 6, "gemini": True}},
                     {
-                        "label": "Signal the truck",
+                        "label": "Call for Evac",
                         "effect": {"flags": {"extract_halcyon": True}},
                     }
                     if s.world.day >= 12
-                    else {"label": "Keep listening", "effect": {"morale": 6, "gemini": True}},
-                    {"label": "Off-air joke", "effect": {"morale": 8, "humanity": 2, "gemini": True}},
-                    {"label": "Back", "effect": {"open": "hub"}},
+                    else {"label": "Monitor Frequencies", "effect": {"morale": 8, "gemini": True}},
+                    {"label": "Tell a Radio Joke", "effect": {"morale": 10, "humanity": 4, "gemini": True}},
+                    {"label": "Back to Hub", "effect": {"open": "hub"}},
                 ]
             else:
-                text = "Static with ambitions. You need parts and a workbench that is not ashamed."
+                text = "Static hiss and crackling interference. You need radio parts from the tower to boost the receiver."
                 choices = [
-                    {"label": "Tune anyway", "effect": {"morale": 2, "gemini": True, "flags": {"heard_halcyon": True}}},
-                    {"label": "Hunt parts", "effect": {"expedition": "Radio Tower"}},
-                    {"label": "Leave it", "effect": {"open": "hub"}},
-                    {"label": "Hum into it", "effect": {"morale": 3, "gemini": True}},
+                    {"label": "Tune Frequencies", "effect": {"morale": 3, "gemini": True, "flags": {"heard_halcyon": True}}},
+                    {"label": "Expedition to Tower", "effect": {"expedition": "Radio Tower"}},
+                    {"label": "Back to Hub", "effect": {"open": "hub"}},
+                    {"label": "Whistle into Mic", "effect": {"morale": 4, "gemini": True}},
                 ]
                 self._discover("Radio Tower")
+
             self.state.mode = "event"
-            self._show("CHANNEL 7", text, choices, "radio", "event", "BACK")
+            self._show("CHANNEL 7 BROADCAST", text, choices, "radio", "event", "BACK")
             return
+
         if who == "journal":
             stage = STAGE_LABEL[s.infection_stage()]
             text = (
-                f"Day {s.world.day}. {stage}. Humanity {s.player.humanity}. "
-                f"Weapon: {WEAPONS.get(s.player.weapon, WEAPONS['fists'])['name']}. "
-                "You write because the house should remember you correctly."
+                f"Day {s.world.day} Survivor Log. Health: {s.player.health}% · Infection: {stage}.\n"
+                f"Humanity: {s.player.humanity}/100 · Weapon: {WEAPONS.get(s.player.weapon, WEAPONS['fists'])['name']}.\n"
+                "You write ink upon paper so the city doesn't forget who lived behind this door."
             )
             self._show(
                 "SURVIVOR LOG",
                 text,
                 [
-                    {"label": "Write hope", "effect": {"morale": 6, "humanity": 2, "gemini": True, "open": "hub"}},
-                    {"label": "Write the dead", "effect": {"morale": -4, "humanity": 4, "gemini": True, "open": "hub"}},
-                    {"label": "Inventory the living", "effect": {"open": "talk"}},
-                    {"label": "Close it", "effect": {"open": "hub"}},
+                    {"label": "Record Thoughts of Hope", "effect": {"morale": 8, "humanity": 3, "gemini": True, "open": "hub"}},
+                    {"label": "Write of the Lost", "effect": {"morale": -3, "humanity": 6, "gemini": True, "open": "hub"}},
+                    {"label": "Check Companion Roster", "effect": {"open": "talk"}},
+                    {"label": "Close Journal", "effect": {"open": "hub"}},
                 ],
                 "quiet",
                 "menu",
                 "BACK",
             )
             return
+
         npc = s.world.npcs.get(who)
         if not npc:
             self._talk_menu()
             return
+
         lines = {
-            "marcus": f"{npc['name']} sits with the radio like it is a shy animal. 'We can still sound like a city,' he says.",
-            "lena": "Lena checks your pupils without asking. 'Do not romanticize my lucidity. It is a symptom with manners.'",
-            "kid": f"{s.kid_name} has arranged bottlecaps into a fortress. 'This one is you,' they say, which is a lot of pressure for a cap.",
-            "miriam": "Miriam pours water like a sacrament even when it is only water. 'Stay human on purpose,' she says.",
-            "ghost": "Ghost taps twice: still here. Then draws a tunnel in spilled coffee.",
-            "butcher": "He should not be in your kitchen. He is, smiling with the clean hand.",
+            "marcus": f"{npc['name']} cleans a microphone cartridge. 'As long as the tubes glow, friend, we're still a city.'",
+            "lena": f"{npc['name']} adjusts a microscope slides. 'The infection is ruthless, but it follows biochemical law. Don't let your guard down.'",
+            "kid": f"{s.kid_name} arranges brass casings in rows like toy soldiers. 'This one is our house,' they say softly.",
+            "miriam": f"{npc['name']} pours boiled tea into a tin cup. 'Kindness isn't a luxury of peace; it is our only shield.'",
+            "ghost": "Ghost raises two fingers in greeting, then draws a chalk arrow indicating safe sewer conduits.",
+            "butcher": f"{npc['name']} sharpens his cleaver with a steady rhythm. 'Good meat keeps, friend. Everything else spoils.'",
+            "dog": "Scraps thumps his tail against the floorboards and nudges your hand with a wet nose.",
         }
-        text = lines.get(who, npc["name"] + " waits.")
+        text = lines.get(who, npc["name"] + " looks toward you.")
         choices: List[Dict[str, Any]] = [
-            {"label": "Listen", "effect": {"morale": 6, "gemini": True, "open": "hub"}},
-            {"label": "Share food", "effect": {"food": -1, "humanity": 4, "morale": 6, "open": "hub"}},
-            {"label": "Ask for help", "effect": {"morale": 2, "gemini": True, "open": "hub"}},
-            {"label": "Back", "effect": {"open": "hub"}},
+            {"label": "Sit and Listen", "effect": {"morale": 7, "gemini": True, "open": "hub"}},
+            {"label": "Share Ration (-1 Food)", "effect": {"food": -1, "humanity": 5, "morale": 8, "open": "hub"}},
+            {"label": "Ask for Advice", "effect": {"morale": 4, "gemini": True, "open": "hub"}},
+            {"label": "Return to Hub", "effect": {"open": "hub"}},
         ]
         if who == "lena" and s.player.infection >= 20:
-            choices[2] = {"label": "Ask for a dose", "effect": {"infection": -12, "health": -4, "open": "hub"}}
+            choices[2] = {"label": "Request Inhibitor Dose", "effect": {"infection": -15, "health": -6, "open": "hub"}}
+
         self._show(npc["short"].upper(), text, choices, who, "event", "BACK")
 
     def _give_item(self, item_id: str):
@@ -700,17 +768,17 @@ class GameEngine:
             self.state.log.append(f"You already carry {info['name']}.")
             return
         if len(p.inventory) >= INV_SLOTS:
-            self.state.log.append("Pockets full. You leave a piece of the old world.")
+            self.state.log.append("Pack is full (8/8). You must leave something behind.")
             return
         p.inventory.append(item_id)
-        self.state.log.append(f"Took {info['name']}.")
+        self.state.log.append(f"Acquired: {info['name']}.")
         if item_id in WEAPONS:
             p.weapon = item_id
 
     def _discover(self, name: str):
         if name and name not in self.state.world.known_locations and name in LOCATIONS:
             self.state.world.known_locations.append(name)
-            self.state.log.append(f"Mapped: {name}.")
+            self.state.log.append(f"New Location Mapped: {name}.")
 
     def _npc_join(self, npc_id: str):
         npc = self.state.world.npcs.get(npc_id)
@@ -718,11 +786,11 @@ class GameEngine:
             return
         npc["met"] = True
         npc["at_base"] = True
-        npc["trust"] = npc.get("trust", 0) + 2
+        npc["trust"] = npc.get("trust", 0) + 3
         if npc_id == "kid":
             npc["name"] = self.state.kid_name
             npc["short"] = self.state.kid_name
-        self.state.log.append(f"{npc['short']} is under your roof now.")
+        self.state.log.append(f"★ {npc['short']} has taken refuge under your roof.")
         self.state.fx = "join"
 
     def _npc_kill(self, npc_id: str):
@@ -731,7 +799,7 @@ class GameEngine:
             return
         npc["alive"] = False
         npc["at_base"] = False
-        self.state.log.append(f"{npc['short']} will not be coming.")
+        self.state.log.append(f"† {npc['short']} has perished in the wasteland.")
 
     async def _spend_action(self):
         w = self.state.world
@@ -747,22 +815,28 @@ class GameEngine:
         w.is_night = True
         w.actions_left = 1
         w.weather = random.choice(WEATHERS)
-        self.state.log.append("Night falls like a verdict with no clerk.")
+        self.state.log.append(f"── NIGHTFALL DESCENDS · WEATHER: {w.weather.upper()} ──")
         self.state.fx = "night"
         await self.buzzer.nightfall()
-        threat = 0.12 + (0.05 if w.weather == "storm" else 0) + (0.08 if self.state.player.infection >= 50 else 0)
+
+        # Incursion risk calculation
+        threat = 0.14 + (0.06 if w.weather == "storm" else 0) + (0.08 if self.state.player.infection >= 50 else 0)
         threat -= w.fortification * 0.03
         if w.flags.get("alarm"):
+            threat -= 0.10
+        if w.flags.get("has_dog"):
             threat -= 0.08
-        if random.random() < max(0.02, threat) and w.fortification < 3 and w.day >= 4:
-            self.state.log.append("The boards fail a test they did not study for.")
-            if random.random() < 0.4:
+
+        if random.random() < max(0.02, threat) and w.fortification < 3 and w.day >= 3:
+            self.state.log.append("Shamblers claw at the lower barricades! Planks splinter under weight.")
+            if random.random() < 0.35 and w.fortification == 0:
                 w.flags["death_cause"] = "breach"
                 await self._trigger_ending()
                 return
-            self.state.player.health -= random.randint(10, 22)
+            self.state.player.health -= random.randint(12, 24)
             self.state.fx = "shake"
-        elif random.random() < 0.35:
+            await self.buzzer.danger()
+        elif random.random() < 0.40:
             self.state.world.location = "Home Base"
             ev = select_event(self.state, "Home Base")
             self._present_event(ev)
@@ -771,57 +845,65 @@ class GameEngine:
         w, p = self.state.world, self.state.player
         w.is_night = False
         w.day += 1
+        p.days_survived = w.day
         w.actions_left = 2
         w.weather = random.choice(WEATHERS)
-        food_need = 1 + (
-            (1 if any(n.get("at_base") and n.get("alive") for n in w.npcs.values()) else 0)
-        )
-        if w.flags.get("garden") and random.random() < 0.6:
+
+        # Rations consumed
+        food_need = 1 + (1 if any(n.get("at_base") and n.get("alive") for n in w.npcs.values()) else 0)
+        if w.flags.get("garden") and random.random() < 0.65:
             p.food += 1
-            self.state.log.append("The planter pays rent.")
+            self.state.log.append("The window planter box produces fresh root greens (+1 Food).")
+
         if w.flags.get("rain_catcher") and w.weather in ("rain", "storm"):
             p.water += 2
-            self.state.log.append("The sky makes good.")
+            self.state.log.append("The gutter rain catcher fills with clean rainwater (+2 Water).")
+
         p.food = max(0, p.food - food_need)
         p.water = max(0, p.water - 1)
-        self.state.log.append(f"── DAY {w.day} · {w.weather} ──")
+        self.state.log.append(f"── DAWN: DAY {w.day} · WEATHER: {w.weather.upper()} ──")
+
+        # Starvation / Dehydration
         if p.food == 0 or p.water == 0:
-            p.health -= 12
-            p.morale -= 8
-            self.state.log.append("The cupboard is a hole you keep falling into.")
-            if p.food == 0 and p.water == 0:
+            p.health -= 14
+            p.morale -= 10
+            self.state.log.append("Pangs of hunger and dehydration weaken your limbs (-14 HP).")
+            if p.food == 0 and p.water == 0 and p.health <= 0:
                 w.flags.setdefault("death_cause", "starved")
+
+        # Infection tick
         if p.infection > 0:
             tick = 2 + (3 if self.state.infection_stage() in ("lucid", "turning") else 0)
-            if "mask" in p.inventory:
+            if "gas_mask" in p.inventory:
+                tick = max(0, tick - 2)
+            elif "mask" in p.inventory:
                 tick = max(1, tick - 1)
             if w.flags.get("lena_treated"):
                 tick = max(0, tick - 2)
-            p.infection += tick
-            p.health -= 1 if p.infection >= 25 else 0
+
+            p.infection = min(100, p.infection + tick)
+            if p.infection >= 30:
+                p.health -= 2
             await self.buzzer.infection_tick()
             self.state.fx = "infect"
-        if p.morale <= 15:
-            p.health -= 4
-            self.state.log.append("Hope is late for its shift.")
-        if p.humanity <= 20:
+
+        if p.morale <= 20:
+            p.health -= 5
+            self.state.log.append("Despair weighs heavy upon your shoulders (-5 HP).")
+
+        # Humanity reactions
+        if p.humanity <= 18:
             for npc in w.npcs.values():
-                if npc.get("at_base") and npc["id"] in ("miriam", "kid") and random.random() < 0.25:
+                if npc.get("at_base") and npc["id"] in ("miriam", "kid") and random.random() < 0.30:
                     npc["at_base"] = False
-                    self.state.log.append(f"{npc['short']} cannot stay with what you are becoming.")
+                    self.state.log.append(f"{npc['short']} slipped away into the night, terrified of what you are becoming.")
+
         self.display.show_health(p.health)
-        await self.buzzer.success()
+        await self.buzzer.dawn()
+
+        # Day 21 Campaign victory evaluation
         if w.day >= 21 and not self.state.game_over:
-            if not any(
-                w.flags.get(k)
-                for k in (
-                    "extract_halcyon",
-                    "chose_docks",
-                    "chose_quiet",
-                    "chose_ghost_path",
-                    "chose_sermon",
-                )
-            ):
+            if not any(w.flags.get(k) for k in ("extract_halcyon", "chose_docks", "chose_quiet", "chose_ghost_path", "chose_sermon")):
                 w.flags["chose_quiet"] = True
             await self._trigger_ending()
 
@@ -829,10 +911,12 @@ class GameEngine:
         self.state.clamp()
         if self.state.game_over:
             return
+
         if self.state.player.infection >= 100:
             self.state.world.flags["death_cause"] = "turned"
             await self._trigger_ending()
             return
+
         if self.state.player.health <= 0:
             if self.state.player.food == 0 and self.state.player.water == 0:
                 self.state.world.flags.setdefault("death_cause", "starved")
@@ -851,13 +935,14 @@ class GameEngine:
             "broadcast",
             "ghost_path",
             "sermon",
+            "pack_leader",
         )
         apply_ending(self.state, eid, victory)
         if victory:
-            await self.buzzer.success()
+            await self.buzzer.victory()
             self.display.show("P")
         else:
-            await self.buzzer.danger()
+            await self.buzzer.game_over()
             self.display.show("E")
         self._ending_menu()
         self.state.save()

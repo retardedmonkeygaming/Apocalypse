@@ -2,85 +2,210 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>APOCALYPSE TERMINAL — Channel 7</title>
   <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📻</text></svg>" />
 </head>
 <body>
-  <div id="crt">
-    <div id="scanlines"></div>
-    <div id="vignette"></div>
-    <div id="chroma"></div>
+  <div id="crt-frame">
+    <div id="crt-bezel">
+      <div id="crt-screen">
+        <div id="scanlines"></div>
+        <div id="vignette"></div>
+        <div id="chroma"></div>
+        <div id="screen-glare"></div>
 
-    <header id="hud">
-      <div class="brand">CH.7</div>
-      <div class="stat">DAY <span id="day">1</span></div>
-      <div class="stat" id="clock">DAY</div>
-      <div class="stat" id="weather">CLEAR</div>
-      <div class="stat loc">LOC <span id="location">Home Base</span></div>
-      <div id="seg" class="seg" title="Health tens digit (mirrors 7-segment)">
-        <div class="seg-d a"></div><div class="seg-d b"></div><div class="seg-d c"></div>
-        <div class="seg-d d"></div><div class="seg-d e"></div><div class="seg-d f"></div>
-        <div class="seg-d g"></div>
+        <!-- TOP MONITOR HEADER / HUD -->
+        <header id="hud">
+          <div class="brand-group">
+            <span class="power-led" title="Power On"></span>
+            <span class="brand">CHANNEL 7</span>
+            <span class="sub-brand">EMERGENCY BROADCAST</span>
+          </div>
+
+          <div class="hud-stats">
+            <div class="stat"><span class="lbl">DAY</span> <b id="day">1</b></div>
+            <div class="stat"><span class="lbl">CLOCK</span> <b id="clock" class="badge-clock">DAY</b></div>
+            <div class="stat"><span class="lbl">WEATHER</span> <b id="weather" class="badge-weather">CLEAR</b></div>
+            <div class="stat loc"><span class="lbl">LOCATION</span> <b id="location">Home Base</b></div>
+          </div>
+
+          <!-- PHYSICAL 7-SEGMENT MIRROR -->
+          <div class="seg-housing" title="Hardware 7-Segment Mirror (Health Tens Digit / P / E)">
+            <span class="seg-label">HEALTH DIGIT</span>
+            <div id="seg" class="seg">
+              <div class="seg-d a"></div>
+              <div class="seg-d b"></div>
+              <div class="seg-d c"></div>
+              <div class="seg-d d"></div>
+              <div class="seg-d e"></div>
+              <div class="seg-d f"></div>
+              <div class="seg-d g"></div>
+            </div>
+          </div>
+        </header>
+
+        <!-- SURVIVOR VITALS BARS -->
+        <section id="bars">
+          <div class="bar-container hp-box">
+            <div class="bar-meta"><span>VITALITY (HP)</span><b id="health">100</b><span class="unit">%</span></div>
+            <div class="bar-track"><div id="bar-hp" class="bar-fill hp-fill"></div></div>
+          </div>
+
+          <div class="bar-container inf-box">
+            <div class="bar-meta"><span>PATHOGEN (INF)</span><b id="infection">0</b><span class="unit">%</span></div>
+            <div class="bar-track"><div id="bar-inf" class="bar-fill inf-fill"></div></div>
+          </div>
+
+          <div class="bar-container mor-box">
+            <div class="bar-meta"><span>RESOLVE (MOR)</span><b id="morale">70</b><span class="unit">%</span></div>
+            <div class="bar-track"><div id="bar-mor" class="bar-fill mor-fill"></div></div>
+          </div>
+
+          <div class="bar-container hum-box">
+            <div class="bar-meta"><span>HUMANITY (HUM)</span><b id="humanity">50</b><span class="unit">/100</span></div>
+            <div class="bar-track"><div id="bar-hum" class="bar-fill hum-fill"></div></div>
+          </div>
+
+          <div class="bar-container fort-box">
+            <div class="bar-meta"><span>BARRICADE (FORT)</span><b id="fort">1</b><span class="unit">/10</span></div>
+            <div class="bar-track"><div id="bar-fort" class="bar-fill fort-fill"></div></div>
+          </div>
+        </section>
+
+        <!-- MAIN TERMINAL PLAY AREA -->
+        <main id="game-area">
+          <!-- LEFT: PROCEDURAL PIXEL CANVAS & EVENT TEXT -->
+          <div id="scene-container">
+            <div class="canvas-wrapper">
+              <canvas id="view" width="320" height="180"></canvas>
+              <div id="fx-flash"></div>
+            </div>
+
+            <div id="story-terminal">
+              <div id="event-title">WAITING FOR BROADCAST...</div>
+              <div id="event-text">Connecting to terminal receiver...</div>
+              <div id="combat-banner" class="hidden">
+                <span class="combat-target" id="combat-target">ENEMY</span>
+                <span class="combat-intent" id="combat-intent">Intent: Closing in</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: ROSTER, BASE UPGRADES, PACK & LOG -->
+          <aside id="side-panel">
+            <!-- UNDER THIS ROOF -->
+            <div class="panel-section" id="party-section">
+              <div class="section-title">
+                <span>UNDER THIS ROOF</span>
+                <span id="party-count" class="chip-count">1</span>
+              </div>
+              <div id="party-list"></div>
+            </div>
+
+            <!-- BASE UPGRADES -->
+            <div class="panel-section" id="upgrades-section">
+              <div class="section-title">BASE INFRASTRUCTURE</div>
+              <div id="upgrades-list">
+                <span class="upg-pill" id="upg-rain">Rain Catcher</span>
+                <span class="upg-pill" id="upg-garden">Planter Box</span>
+                <span class="upg-pill" id="upg-alarm">Tin Alarm</span>
+                <span class="upg-pill" id="upg-medbay">Med Station</span>
+                <span class="upg-pill" id="upg-radio">Ch.7 Booster</span>
+              </div>
+            </div>
+
+            <!-- INVENTORY PACK -->
+            <div class="panel-section" id="inventory-section">
+              <div class="section-title">
+                <span>SURVIVOR PACK</span>
+                <span id="inv-count" class="chip-count">0/8</span>
+              </div>
+              <div id="inv-grid" class="inv-grid"></div>
+            </div>
+
+            <!-- SURVIVOR LOG -->
+            <div class="panel-section" id="log-section">
+              <div class="section-title">CHANNEL 7 SURVIVOR LOG</div>
+              <div id="log-window"></div>
+            </div>
+          </aside>
+        </main>
+
+        <!-- RESOURCE COUNTER STRIP -->
+        <section id="resources">
+          <div class="res-item" title="Canned food & dry rations"><span class="res-lbl">FOOD</span><b id="food">5</b></div>
+          <div class="res-item" title="Fresh water bottles"><span class="res-lbl">WATER</span><b id="water">5</b></div>
+          <div class="res-item" title="Firearm ammunition"><span class="res-lbl">AMMO</span><b id="ammo">6</b></div>
+          <div class="res-item" title="Scrap metal & building wire"><span class="res-lbl">SCRAP</span><b id="scrap">3</b></div>
+          <div class="res-item" title="Medical trauma kits"><span class="res-lbl">KITS</span><b id="medkits">1</b></div>
+          <div class="res-item" title="Currently equipped weapon"><span class="res-lbl">ARMS</span><b id="weapon">BARE HANDS</b></div>
+          <div class="res-item" title="Current infection stage"><span class="res-lbl">ROT STAGE</span><b id="stage" class="stage-clean">CLEAN</b></div>
+        </section>
+
+        <!-- 5 PHYSICAL/VIRTUAL ARCADE BUTTONS -->
+        <section id="arcade-controls">
+          <button class="arcade-btn btn-red" data-key="red" id="btn-red" title="Key [1]">
+            <div class="btn-cap"><span class="btn-glow"></span></div>
+            <div class="btn-label-group">
+              <span class="key-hint">1</span>
+              <span class="btn-text">CHOICE 1</span>
+            </div>
+          </button>
+
+          <button class="arcade-btn btn-blue" data-key="blue" id="btn-blue" title="Key [2]">
+            <div class="btn-cap"><span class="btn-glow"></span></div>
+            <div class="btn-label-group">
+              <span class="key-hint">2</span>
+              <span class="btn-text">CHOICE 2</span>
+            </div>
+          </button>
+
+          <button class="arcade-btn btn-green" data-key="green" id="btn-green" title="Key [3]">
+            <div class="btn-cap"><span class="btn-glow"></span></div>
+            <div class="btn-label-group">
+              <span class="key-hint">3</span>
+              <span class="btn-text">CHOICE 3</span>
+            </div>
+          </button>
+
+          <button class="arcade-btn btn-yellow" data-key="yellow" id="btn-yellow" title="Key [4]">
+            <div class="btn-cap"><span class="btn-glow"></span></div>
+            <div class="btn-label-group">
+              <span class="key-hint">4</span>
+              <span class="btn-text">CHOICE 4</span>
+            </div>
+          </button>
+
+          <button class="arcade-btn btn-confirm" data-key="confirm" id="btn-confirm" title="Key [SPACE]">
+            <div class="btn-cap"><span class="btn-glow"></span></div>
+            <div class="btn-label-group">
+              <span class="key-hint">SPACE</span>
+              <span class="btn-text" id="confirm-text">REST</span>
+            </div>
+          </button>
+        </section>
+
+        <!-- MONITOR FOOTER -->
+        <footer id="crt-footer">
+          <div class="footer-left">
+            <button id="btn-new-game" class="utility-btn" title="Abandon run and restart [N]">NEW RUN</button>
+            <button id="btn-mute" class="utility-btn" title="Toggle audio synthesizer [M]">SOUND: ON</button>
+            <button id="btn-scanlines" class="utility-btn" title="Toggle CRT scanlines">CRT: VINTAGE</button>
+          </div>
+          <div class="footer-center">
+            <span class="controls-hint">Keys: <b>1-4</b> Select · <b>Space</b> Confirm/Rest/Kit · <b>N</b> New Run · <b>M</b> Mute</span>
+          </div>
+          <div class="footer-right">
+            <span class="status-pill" id="status">CONNECTING</span>
+          </div>
+        </footer>
       </div>
-    </header>
-
-    <section id="bars">
-      <label>HP <div class="bar"><i id="bar-hp"></i></div><span id="health">100</span></label>
-      <label>INF <div class="bar inf"><i id="bar-inf"></i></div><span id="infection">0</span></label>
-      <label>MOR <div class="bar mor"><i id="bar-mor"></i></div><span id="morale">70</span></label>
-      <label>HUM <div class="bar hum"><i id="bar-hum"></i></div><span id="humanity">50</span></label>
-      <label>FORT <div class="bar fort"><i id="bar-fort"></i></div><span id="fort">1</span></label>
-    </section>
-
-    <main id="game-area">
-      <div id="scene">
-        <canvas id="view" width="320" height="180"></canvas>
-        <div id="event-title">WAITING...</div>
-        <div id="event-text"></div>
-        <div id="combat-log"></div>
-      </div>
-      <aside id="side">
-        <div id="party">
-          <h3>UNDER THIS ROOF</h3>
-          <div id="party-list"></div>
-        </div>
-        <div id="inventory">
-          <h3>PACK <span id="inv-count">0/8</span></h3>
-          <div id="inv-list"></div>
-        </div>
-        <div id="journal">
-          <h3>SURVIVOR LOG</h3>
-          <div id="log"></div>
-        </div>
-      </aside>
-    </main>
-
-    <section id="resources">
-      <span>FOOD <b id="food">5</b></span>
-      <span>WATER <b id="water">5</b></span>
-      <span>AMMO <b id="ammo">8</b></span>
-      <span>SCRAP <b id="scrap">2</b></span>
-      <span>KITS <b id="medkits">1</b></span>
-      <span>ARMS <b id="weapon">FISTS</b></span>
-      <span>STAGE <b id="stage">CLEAN</b></span>
-    </section>
-
-    <section id="choices">
-      <button class="choice" data-key="red" id="btn-red"><i></i><span>RED</span></button>
-      <button class="choice" data-key="blue" id="btn-blue"><i></i><span>BLUE</span></button>
-      <button class="choice" data-key="green" id="btn-green"><i></i><span>GREEN</span></button>
-      <button class="choice" data-key="yellow" id="btn-yellow"><i></i><span>YELLOW</span></button>
-      <button class="choice utility" data-key="confirm" id="btn-confirm"><i></i><span>REST</span></button>
-    </section>
-
-    <footer>
-      <button id="new-game">NEW RUN</button>
-      <span class="hint">1–4 choose · Space confirm · hardware mirrors this screen</span>
-      <span id="status">CONNECTING</span>
-    </footer>
+    </div>
   </div>
 
+  <!-- SCRIPTS -->
   <script src="/static/js/audio.js"></script>
   <script src="/static/js/pixel.js"></script>
   <script src="/static/js/websocket.js"></script>

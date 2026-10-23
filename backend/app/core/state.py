@@ -18,12 +18,16 @@ class Player:
     humanity: int = 50
     food: int = 5
     water: int = 5
-    ammo: int = 8
-    scrap: int = 2
+    ammo: int = 6
+    scrap: int = 3
     medkits: int = 1
     weapon: str = "fists"
     inventory: List[str] = field(default_factory=list)
-    name: str = "You"
+    name: str = "Survivor"
+    kills: int = 0
+    days_survived: int = 0
+    meals_shared: int = 0
+    craft_count: int = 0
 
 
 @dataclass
@@ -35,11 +39,19 @@ class World:
     weather: str = "clear"
     fortification: int = 1
     known_locations: List[str] = field(
-        default_factory=lambda: ["Home Base", "Streets", "Abandoned Mall", "Hospital"]
+        default_factory=lambda: [
+            "Home Base",
+            "Streets",
+            "Abandoned Mall",
+            "Hospital",
+            "Radio Tower",
+        ]
     )
     flags: Dict[str, Any] = field(default_factory=dict)
     npcs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     seen_events: List[str] = field(default_factory=list)
+    has_dog: bool = False
+    dog_name: str = "Scraps"
 
 
 @dataclass
@@ -49,6 +61,7 @@ class CombatState:
     enemy_name: str = ""
     enemy_hp: int = 0
     enemy_max: int = 0
+    enemy_intent: str = ""
     log: List[str] = field(default_factory=list)
     defending: bool = False
     round: int = 0
@@ -60,7 +73,7 @@ class GameState:
     world: World = field(default_factory=World)
     combat: CombatState = field(default_factory=CombatState)
     mode: str = "hub"  # hub, event, combat, menu, ending
-    menu: str = ""  # locations, craft, talk, fortify
+    menu: str = ""  # locations, craft, talk, fortify, inventory
     current_event: Optional[Dict[str, Any]] = None
     log: List[str] = field(default_factory=list)
     game_over: bool = False
@@ -122,7 +135,7 @@ class GameState:
             "mode": self.mode,
             "menu": self.menu,
             "current_event": self.current_event,
-            "log": self.log[-40:],
+            "log": self.log[-45:],
             "game_over": self.game_over,
             "victory": self.victory,
             "ending_id": self.ending_id,

@@ -1,61 +1,115 @@
-const socket = new GameSocket(
-  (location.protocol === "https:" ? "wss://" : "ws://") +
-    location.host +
-    "/ws"
-);
+/* ==========================================================================
+   APOCALYPSE TERMINAL — Game Controller & Input Dispatcher
+   Maps keyboard, mouse, touch, and audio events to GameSocket actions
+   ========================================================================== */
 
-socket.on("state", updateUI);
-socket.on("status", (s) => {
-  document.getElementById("status").textContent = s;
+const socket = new GameSocket(
+  (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"
+);
+window.socket = socket;
+
+socket.on("state", (state) => {
+  updateUI(state);
 });
+
 socket.connect();
 
 function press(key) {
-  const id = {
+  const btnId = {
     red: "btn-red",
     blue: "btn-blue",
     green: "btn-green",
     yellow: "btn-yellow",
     confirm: "btn-confirm",
   }[key];
-  const btn = document.getElementById(id);
-  if (btn) {
+
+  const btn = document.getElementById(btnId);
+  if (btn && !btn.disabled) {
     btn.classList.add("pressed");
-    setTimeout(() => btn.classList.remove("pressed"), 140);
+    setTimeout(() => btn.classList.remove("pressed"), 120);
   }
-  SFX.ensure();
-  SFX.beep(key === "confirm" ? 520 : 400, 0.04, "square", 0.03);
-  if (key === "confirm") socket.send({ action: "confirm" });
-  else socket.send({ action: "choice", key });
+
+  // Audio blip on press
+  if (window.SFX) {
+    SFX.ensure();
+    const toneFreq = key === "confirm" ? 520 : 380;
+    SFX.beep(toneFreq, 0.04, "square", 0.03);
+  }
+
+  if (key === "confirm") {
+    socket.send({ action: "confirm" });
+  } else {
+    socket.send({ action: "choice", key });
+  }
 }
 
-document.querySelectorAll(".choice").forEach((btn) => {
-  btn.addEventListener("click", () => press(btn.dataset.key));
+// 1. ARCADE BUTTON CLICKS
+document.querySelectorAll(".arcade-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (!btn.disabled) {
+      press(btn.dataset.key);
+    }
+  });
 });
 
-document.getElementById("new-game").addEventListener("click", () => {
-  if (confirm("Abandon this run and wake up in the boarded room again?")) {
-    SFX.ensure();
+// 2. FOOTER UTILITIES: NEW RUN, MUTE & SCANLINES
+document.getElementById("btn-new-game").addEventListener("click", () => {
+  if (confirm("Abandon this run and wake up behind the boarded door again?")) {
+    if (window.SFX) SFX.ensure();
     socket.send({ action: "new_game" });
   }
 });
 
-document.addEventListener("keydown", (e) => {
-  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA"))
-    return;
-  const map = { 1: "red", 2: "blue", 3: "green", 4: "yellow", " ": "confirm" };
-  if (map[e.key]) {
-    e.preventDefault();
-    press(map[e.key]);
+document.getElementById("btn-mute").addEventListener("click", () => {
+  if (window.SFX) {
+    SFX.ensure();
+    SFX.toggleMute();
   }
 });
 
-setInterval(() => {
-  if (window.Scene && Scene.last) Scene.render(Scene.last);
-}, 120);
+document.getElementById("btn-scanlines").addEventListener("click", () => {
+  document.body.classList.toggle("no-scanlines");
+  const isNoScan = document.body.classList.contains("no-scanlines");
+  document.getElementById("btn-scanlines").textContent = `CRT: ${isNoScan ? "MODERN" : "VINTAGE"}`;
+});
 
-const _orig = updateUI;
-window.updateUI = function (state) {
-  Scene.last = state;
-  _orig(state);
-};
+// 3. KEYBOARD EVENT LISTENER
+document.addEventListener("keydown", (e) => {
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
+    return;
+  }
+
+  const keyMap = {
+    "1": "red",
+    "2": "blue",
+    "3": "green",
+    "4": "yellow",
+    " ": "confirm",
+    "Enter": "confirm",
+  };
+
+  if (keyMap[e.key]) {
+    e.preventDefault();
+    press(keyMap[e.key]);
+    return;
+  }
+
+  // Shortcut: N for new run
+  if (e.key === "n" || e.key === "N") {
+    if (confirm("Abandon this run and wake up behind the boarded door again?")) {
+      socket.send({ action: "new_game" });
+    }
+  }
+
+  // Shortcut: M for mute
+  if (e.key === "m" || e.key === "M") {
+    if (window.SFX) SFX.toggleMute();
+  }
+});
+
+// 4. ANIMATION TICKER FOR PROCEDURAL PIXEL CANVAS
+setInterval(() => {
+  if (window.Scene && Scene.lastState) {
+    Scene.render(Scene.lastState);
+  }
+}, 80);

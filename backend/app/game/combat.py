@@ -11,9 +11,10 @@ def make_combat(enemy_id: str) -> Dict[str, Any]:
         "enemy_name": spec["name"],
         "enemy_hp": spec["hp"],
         "enemy_max": spec["hp"],
-        "log": [f"{spec['name']} closes in."],
+        "enemy_intent": spec.get("intent", "Closing the distance."),
+        "log": [f"{spec['name']} emerges! {spec.get('intent', '')}"],
         "defending": False,
-        "round": 0,
+        "round": 1,
     }
 
 
@@ -22,28 +23,55 @@ def _weapon(state) -> Dict[str, Any]:
 
 
 def _player_hit_chance(state) -> float:
-    acc = 0.78
-    if state.infection_stage() in ("lucid", "turning"):
-        acc -= 0.12
+    acc = 0.82
+    if state.infection_stage() in ("fever",):
+        acc -= 0.10
+    elif state.infection_stage() in ("lucid", "turning"):
+        acc -= 0.20
     if state.player.morale < 30:
-        acc -= 0.08
+        acc -= 0.10
     if state.world.weather == "fog":
-        acc -= 0.06
-    return max(0.35, acc)
+        acc -= 0.15
+    return max(0.30, acc)
 
 
-def _incoming(state, spec: Dict[str, Any], defending: bool) -> Tuple[int, bool]:
-    if random.random() > spec["acc"]:
-        return 0, False
-    dmg = spec["dmg"] + random.randint(-2, 2)
+def _enemy_retaliation(state, spec: Dict[str, Any], defending: bool) -> Tuple[int, bool, str]:
+    """Calculates enemy damage, infection roll, and descriptive narrative."""
+    enemy_name = spec["name"]
+    # Check hit
+    acc = spec["acc"]
+    if state.world.weather == "fog":
+        acc -= 0.12
+    if random.random() > acc:
+        return 0, False, f"{enemy_name} swipes wide through the air."
+
+    dmg = spec["dmg"] + random.randint(-2, 3)
     if defending:
-        dmg = dmg // 2
+        dmg = max(1, int(dmg * 0.35))  # Defend cuts 65% of damage
     if state.world.location == "Home Base":
         dmg = max(1, dmg - state.world.fortification // 3)
-    infect = random.random() < spec.get("infect", 0)
-    if "mask" in state.player.inventory:
-        infect = infect and random.random() < 0.45
-    return max(0, dmg), infect
+
+    # Infection roll: NEVER infects if player actively defended
+    infect = False
+    if not defending and not spec.get("human"):
+        base_inf = spec.get("infect", 0.0)
+        if random.random() < base_inf:
+            # Mask protection
+            if "gas_mask" in state.player.inventory:
+                infect = random.random() < 0.20
+            elif "mask" in state.player.inventory:
+                infect = random.random() < 0.50
+            else:
+                infect = True
+
+    if defending:
+        note = f"You brace tight. {enemy_name} thuds against your guard for {dmg} damage."
+    else:
+        note = f"{enemy_name} strikes hard, dealing {dmg} damage!"
+        if infect:
+            note += " Sharp teeth graze skin — infection enters!"
+
+    return max(1, dmg), infect, note
 
 
 def resolve_player_action(state, action: str) -> Dict[str, Any]:
@@ -55,95 +83,110 @@ def resolve_player_action(state, action: str) -> Dict[str, Any]:
     defending = False
     enemy_stunned = False
 
+    # 1. Resolve player action
     if action == "attack":
         if random.random() < _player_hit_chance(state):
-            dmg = wpn["dmg"] + random.randint(0, 3) - spec.get("armor", 0)
-            dmg = max(1, dmg)
+            base = wpn["dmg"] + random.randint(0, 4)
+            armor = max(0, spec.get("armor", 0) - wpn.get("armor_pen", 0))
+            dmg = max(2, base - armor)
+            is_crit = random.random() < 0.15
+            if is_crit:
+                dmg = int(dmg * 1.5)
+                notes.append(f"CRITICAL HIT! You smash through with {wpn['name']} for {dmg} damage!")
+            else:
+                notes.append(f"You swing your {wpn['name'].lower()}, dealing {dmg} damage.")
             state.combat.enemy_hp -= dmg
-            notes.append(f"You land {dmg} with {wpn['name'].lower()}.")
         else:
-            notes.append("You swing through damp air.")
+            notes.append(f"You lunge with your {wpn['name'].lower()}, but miss in the shadows!")
             fx = "miss"
+
     elif action == "defend":
         defending = True
-        notes.append("You tuck in. Wood, bone, patience.")
+        notes.append("You tuck behind cover, bracing against incoming violence.")
         fx = "defend"
+
     elif action == "shoot":
         if p.ammo <= 0:
-            notes.append("The magazine answers with a click that feels personal.")
+            notes.append("Your trigger clicks dry against an empty chamber!")
             fx = "miss"
         else:
             p.ammo -= 1
-            dmg = 14 + random.randint(0, 6) - spec.get("armor", 0) // 2
-            dmg = max(2, dmg)
+            base = wpn["dmg"] if wpn.get("ranged") else 24
+            armor_pen = wpn.get("armor_pen", 2)
+            dmg = max(6, base + random.randint(2, 8) - max(0, spec.get("armor", 0) - armor_pen))
             state.combat.enemy_hp -= dmg
-            enemy_stunned = spec["name"] != "Armored Dead" and random.random() < 0.35
-            notes.append(f"Muzzle flash. {dmg} through meat.")
+            # Chance to stun enemy
+            enemy_stunned = random.random() < 0.40
+            notes.append(f"Muzzle flash tears through the gloom! {dmg} damage.")
+            if enemy_stunned:
+                notes.append(f"The kinetic impact knocks {spec['name']} off-balance!")
             fx = "gun"
+
     elif action == "molotov":
         if "molotov" not in p.inventory:
-            notes.append("Your hands find no bottle.")
+            notes.append("You reach into your pack, but find no bottle!")
             fx = "miss"
         else:
             p.inventory.remove("molotov")
-            dmg = 22
+            dmg = 26 + random.randint(2, 8)
             state.combat.enemy_hp -= dmg
             enemy_stunned = True
-            notes.append("The night wears a new sun. The thing screams in a human key.")
+            notes.append(f"Glass shatters in a bloom of orange fire! {dmg} fire damage. {spec['name']} is engulfed!")
             fx = "fire"
+
     elif action == "flee":
-        chance = spec.get("flee", 0.5)
+        flee_chance = spec.get("flee", 0.5)
         if state.world.weather == "fog":
-            chance += 0.1
-        if random.random() < chance:
+            flee_chance += 0.20
+        if state.world.npcs.get("ghost", {}).get("at_base"):
+            flee_chance += 0.15
+        if random.random() < flee_chance:
             state.combat.active = False
-            notes.append("You leave pieces of your dignity on the floor. You keep the rest.")
-            return {"over": True, "fled": True, "notes": notes, "fx": "flee"}
-        notes.append("It cuts off the door.")
-        fx = "shake"
-
-    # Enemy turn
-    if state.combat.enemy_hp > 0 and not enemy_stunned:
-        dmg, infect = _incoming(state, spec, defending)
-        if dmg <= 0:
-            notes.append(f"The {spec['name'].lower()} misses, wetly.")
+            notes.append("You scramble through broken drywall and lose your pursuer in the wreckage.")
+            return {"notes": notes, "fx": "flee", "over": True, "fled": True}
         else:
-            p.health -= dmg
-            notes.append(f"{spec['name']} hits for {dmg}.")
-            fx = "shake"
-            if infect:
-                extra = random.randint(4, 12)
-                p.infection += extra
-                notes.append("The wound is too warm.")
-    elif enemy_stunned and state.combat.enemy_hp > 0:
-        notes.append("It staggers, cooking in its own noise.")
+            notes.append("You scramble to retreat, but rubble blocks your exit!")
+            fx = "miss"
 
-    state.combat.round += 1
-    state.combat.defending = defending
-    state.combat.log = (state.combat.log + notes)[-8:]
-
+    # 2. Check if enemy died
     if state.combat.enemy_hp <= 0:
         state.combat.active = False
-        loot = _loot(spec)
-        notes.append(f"The {spec['name'].lower()} goes still.")
-        return {"over": True, "won": True, "notes": notes, "fx": "success", "loot": loot}
+        p.kills += 1
+        loot = dict(spec.get("loot", {}))
+        notes.append(f"── {spec['name']} collapses into motionless silence! ──")
+        return {"notes": notes, "fx": "success", "over": True, "loot": loot}
 
+    # 3. Enemy retaliation turn (if alive and not stunned)
+    if enemy_stunned:
+        notes.append(f"{spec['name']} staggers helplessly, unable to retaliate this turn.")
+    else:
+        edmg, infect, note = _enemy_retaliation(state, spec, defending)
+        p.health -= edmg
+        if infect:
+            p.infection = min(100, p.infection + random.randint(6, 14))
+        notes.append(note)
+
+    # 4. Check if player died
     if p.health <= 0:
-        state.combat.active = False
-        return {"over": True, "died": True, "notes": notes, "fx": "danger"}
+        return {"notes": notes, "fx": "danger", "over": True, "died": True}
 
-    return {"over": False, "notes": notes, "fx": fx}
+    # 5. Telegraphed intent for next round
+    intents = [
+        f"{spec['name']} bares rotting teeth and prepares to strike.",
+        f"{spec['name']} circles around your flank, seeking an opening.",
+        f"{spec['name']} lets out a guttural hiss and gathers its weight.",
+    ]
+    if spec["name"] == "Toxic Bloater":
+        intents.append("Bile bubbles violently beneath the Bloater's translucent skin!")
+    elif spec["name"] == "Frenzied Runner":
+        intents.append("The Runner twitches erratically, coiled to leap!")
+    elif spec["name"] == "The Butcher":
+        intents.append("The Butcher wipes red steel on his apron, laughing softly.")
 
+    state.combat.enemy_intent = random.choice(intents)
+    state.combat.round += 1
+    state.combat.log.extend(notes)
+    if len(state.combat.log) > 10:
+        state.combat.log = state.combat.log[-10:]
 
-def _loot(spec: Dict[str, Any]) -> Dict[str, int]:
-    loot: Dict[str, int] = {}
-    if spec.get("human"):
-        loot["scrap"] = random.randint(1, 3)
-        if random.random() < 0.4:
-            loot["ammo"] = random.randint(1, 4)
-        return loot
-    if random.random() < 0.5:
-        loot["scrap"] = 1
-    if random.random() < 0.2:
-        loot["ammo"] = 1
-    return loot
+    return {"notes": notes, "fx": fx, "over": False}

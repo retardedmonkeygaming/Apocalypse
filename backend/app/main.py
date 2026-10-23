@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -11,22 +12,9 @@ from backend.app.api.routes import router, set_engine
 from backend.app.api.websocket import manager
 from backend.app.hardware.buttons import ButtonManager
 
-app = FastAPI(title="Apocalypse Terminal", docs_url=None, redoc_url=None)
-
-BASE = Path(settings.project_root or ".").resolve()
-FRONTEND = BASE / "frontend"
-
-app.mount("/static", StaticFiles(directory=FRONTEND / "static"), name="static")
-app.include_router(router)
-
-
-@app.get("/ping")
-async def ping():
-    await manager.broadcast({"type": "heartbeat", "ts": asyncio.get_event_loop().time()})
-    return {"ok": True}
-
 engine = GameEngine()
 set_engine(engine)
+engine.set_broadcast(manager.broadcast)
 button_mgr = ButtonManager()
 
 
@@ -51,15 +39,28 @@ _wire_button("yellow", "yellow")
 _wire_button("confirm", "confirm")
 
 
-@app.on_event("startup")
-async def startup():
-    async def broadcaster(data):
-        await manager.broadcast(data)
-
-    engine.set_broadcast(broadcaster)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    engine.set_broadcast(manager.broadcast)
     engine.display.show_health(engine.state.player.health)
     print(f"Apocalypse Terminal  http://{settings.host}:{settings.port}")
     print(f"Hardware={'on' if settings.use_hardware else 'off'}  Gemini={'on' if engine.gemini.enabled else 'off'}")
+    yield
+
+
+app = FastAPI(title="Apocalypse Terminal", docs_url=None, redoc_url=None, lifespan=lifespan)
+
+BASE = Path(settings.project_root or ".").resolve()
+FRONTEND = BASE / "frontend"
+
+app.mount("/static", StaticFiles(directory=FRONTEND / "static"), name="static")
+app.include_router(router)
+
+
+@app.get("/ping")
+async def ping():
+    await manager.broadcast({"type": "heartbeat", "ts": asyncio.get_event_loop().time()})
+    return {"ok": True}
 
 
 @app.get("/")
