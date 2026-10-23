@@ -746,3 +746,20 @@ body.night .badge-clock {
 .shake {
   animation: screen-shake 0.35s ease-in-out;
 }
+
+/* CITY MAP BUTTON — distinct accent so it stands out in the footer */
+.map-btn {
+  border-color: #2a5070 !important;
+  color: #6ac8e0 !important;
+}
+.map-btn:hover {
+  background: #0d2030 !important;
+  border-color: #4ab0d0 !important;
+  color: #a0e8f8 !important;
+}
+
+/* Ensure city map overlay canvas gets crisp pixels */
+#city-map-canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}

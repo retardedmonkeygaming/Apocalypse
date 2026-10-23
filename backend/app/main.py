@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -43,8 +44,23 @@ _wire_button("confirm", "confirm")
 async def lifespan(app: FastAPI):
     engine.set_broadcast(manager.broadcast)
     engine.display.show_health(engine.state.player.health)
+
+    # ── Startup diagnostic ────────────────────────────────────────
+    env_path = Path(".env").resolve()
+    hw = settings.use_hardware
+    gem = engine.gemini.enabled
     print(f"Apocalypse Terminal  http://{settings.host}:{settings.port}")
-    print(f"Hardware={'on' if settings.use_hardware else 'off'}  Gemini={'on' if engine.gemini.enabled else 'off'}")
+    print(f"Hardware={'on' if hw else 'off'}  Gemini={'on' if gem else 'off'}")
+    if not hw:
+        print(
+            f"[Config] USE_HARDWARE=false — set USE_HARDWARE=true in your .env to enable GPIO.\n"
+            f"         Env file searched at: {env_path}"
+        )
+    if hw:
+        print(f"[Hardware] GPIO pins — Red:{settings.pin_btn_red} Blue:{settings.pin_btn_blue} "
+              f"Green:{settings.pin_btn_green} Yellow:{settings.pin_btn_yellow} "
+              f"Confirm:{settings.pin_btn_confirm} | Buzzer:{settings.pin_buzzer}")
+    # ─────────────────────────────────────────────────────────────
     yield
 
 
@@ -71,6 +87,25 @@ async def index():
 @app.get("/health")
 async def health():
     return {"ok": True, "hardware": settings.use_hardware, "gemini": engine.gemini.enabled}
+
+
+@app.get("/api/config")
+async def api_config():
+    """Debug endpoint — returns resolved settings (safe subset, no secrets)."""
+    return {
+        "use_hardware": settings.use_hardware,
+        "host": settings.host,
+        "port": settings.port,
+        "gemini_enabled": engine.gemini.enabled,
+        "pins": {
+            "red": settings.pin_btn_red,
+            "blue": settings.pin_btn_blue,
+            "green": settings.pin_btn_green,
+            "yellow": settings.pin_btn_yellow,
+            "confirm": settings.pin_btn_confirm,
+            "buzzer": settings.pin_buzzer,
+        },
+    }
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ document.querySelectorAll(".arcade-btn").forEach((btn) => {
   });
 });
 
-// 2. FOOTER UTILITIES: NEW RUN, MUTE & SCANLINES
+// 2. FOOTER UTILITIES: NEW RUN, MUTE, SCANLINES & MAP
 document.getElementById("btn-new-game").addEventListener("click", () => {
   if (confirm("Abandon this run and wake up behind the boarded door again?")) {
     if (window.SFX) SFX.ensure();
@@ -63,7 +63,8 @@ document.getElementById("btn-new-game").addEventListener("click", () => {
 document.getElementById("btn-mute").addEventListener("click", () => {
   if (window.SFX) {
     SFX.ensure();
-    SFX.toggleMute();
+    const muted = SFX.toggleMute();
+    document.getElementById("btn-mute").textContent = muted ? "SOUND: OFF" : "SOUND: ON";
   }
 });
 
@@ -71,6 +72,10 @@ document.getElementById("btn-scanlines").addEventListener("click", () => {
   document.body.classList.toggle("no-scanlines");
   const isNoScan = document.body.classList.contains("no-scanlines");
   document.getElementById("btn-scanlines").textContent = `CRT: ${isNoScan ? "MODERN" : "VINTAGE"}`;
+});
+
+document.getElementById("btn-map").addEventListener("click", () => {
+  if (window.CityMap) CityMap.toggle();
 });
 
 // 3. KEYBOARD EVENT LISTENER
@@ -91,6 +96,13 @@ document.addEventListener("keydown", (e) => {
   if (keyMap[e.key]) {
     e.preventDefault();
     press(keyMap[e.key]);
+    return;
+  }
+
+  // Shortcut: Tab for city map (most intuitive key for a "map" toggle)
+  if (e.key === "Tab") {
+    e.preventDefault();
+    if (window.CityMap) CityMap.toggle();
     return;
   }
 

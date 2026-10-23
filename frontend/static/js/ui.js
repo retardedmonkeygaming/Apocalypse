@@ -59,6 +59,30 @@ const ITEM_NAMES = {
   wire_cutters: "Wire Cutters",
 };
 
+// ── Typewriter Effect ─────────────────────────────────────────────────────────
+// Animates text appearing character-by-character for cinematic effect.
+// Only re-runs when the text actually changes (efficient on re-renders).
+const _tw = { timer: null, lastId: "", lastText: "" };
+
+function typewriterText(el, text, eventId, speedMs) {
+  if (!el) return;
+  // Use eventId as cache key — avoids re-typing identical text on every state push
+  const cacheKey = (eventId || "") + "|" + (text || "");
+  if (cacheKey === _tw.lastText) return;
+  _tw.lastText = cacheKey;
+
+  if (_tw.timer) { clearInterval(_tw.timer); _tw.timer = null; }
+  el.textContent = "";
+  let i = 0;
+  const speed = speedMs || 16;
+  _tw.timer = setInterval(() => {
+    if (i >= text.length) { clearInterval(_tw.timer); _tw.timer = null; return; }
+    el.textContent += text[i];
+    i++;
+  }, speed);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function setBar(id, value, max) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -136,7 +160,13 @@ function updateUI(state) {
   const ev = state.current_event;
   if (ev) {
     document.getElementById("event-title").textContent = ev.title || "";
-    document.getElementById("event-text").textContent = ev.text || "";
+    // Cinematic typewriter reveal — only re-runs if text or event id changes
+    typewriterText(
+      document.getElementById("event-text"),
+      ev.text || "",
+      ev.id || state.mode,
+      14
+    );
 
     const btnMap = {
       red: "btn-red",
@@ -170,7 +200,8 @@ function updateUI(state) {
   const combatBanner = document.getElementById("combat-banner");
   if (state.combat && state.combat.active) {
     combatBanner.classList.remove("hidden");
-    document.getElementById("combat-target").textContent = `${state.combat.enemy_name.upper()} (HP ${Math.max(0, state.combat.enemy_hp)}/${state.combat.enemy_max})`;
+    document.getElementById("combat-target").textContent =
+      `${(state.combat.enemy_name || "ENEMY").toUpperCase()} (HP ${Math.max(0, state.combat.enemy_hp)}/${state.combat.enemy_max})`;
     document.getElementById("combat-intent").textContent = state.combat.enemy_intent || "Closing in";
   } else {
     combatBanner.classList.add("hidden");
@@ -259,11 +290,21 @@ function updateUI(state) {
     Scene.render(state);
   }
 
-  // 14. GAME OVER / ENDING DISPLAY
+  // 14. UPDATE CITY MAP
+  if (window.CityMap) {
+    CityMap.update(state);
+  }
+
+  // 15. GAME OVER / ENDING DISPLAY
   if (state.game_over) {
     document.getElementById("event-title").textContent =
       state.ending_title || (state.victory ? "EXTRACTION REACHED" : "COLD FLOOR");
-    document.getElementById("event-text").textContent = state.ending_text || "";
+    typewriterText(
+      document.getElementById("event-text"),
+      state.ending_text || "",
+      "ending",
+      22
+    );
   }
 }
 

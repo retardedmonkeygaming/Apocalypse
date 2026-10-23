@@ -193,9 +193,10 @@
             <button id="btn-new-game" class="utility-btn" title="Abandon run and restart [N]">NEW RUN</button>
             <button id="btn-mute" class="utility-btn" title="Toggle audio synthesizer [M]">SOUND: ON</button>
             <button id="btn-scanlines" class="utility-btn" title="Toggle CRT scanlines">CRT: VINTAGE</button>
+            <button id="btn-map" class="utility-btn map-btn" title="Toggle city reconnaissance map [Tab]">🗺 MAP</button>
           </div>
           <div class="footer-center">
-            <span class="controls-hint">Keys: <b>1-4</b> Select · <b>Space</b> Confirm/Rest/Kit · <b>N</b> New Run · <b>M</b> Mute</span>
+            <span class="controls-hint">Keys: <b>1-4</b> Select · <b>Space</b> Confirm · <b>Tab</b> Map · <b>N</b> New Run · <b>M</b> Mute</span>
           </div>
           <div class="footer-right">
             <span class="status-pill" id="status">CONNECTING</span>
@@ -208,6 +209,7 @@
   <!-- SCRIPTS -->
   <script src="/static/js/audio.js"></script>
   <script src="/static/js/pixel.js"></script>
+  <script src="/static/js/citymap.js"></script>
   <script src="/static/js/websocket.js"></script>
   <script src="/static/js/ui.js"></script>
   <script src="/static/js/game.js"></script>
