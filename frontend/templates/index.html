@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APOCALYPSE TERMINAL</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="crt">
+    <div id="scanlines"></div>
+    <header id="hud">
+      <div class="stat">DAY <span id="day">1</span></div>
+      <div class="stat">HP <span id="health">100</span></div>
+      <div class="stat">INF <span id="infection">0</span>%</div>
+      <div class="stat">MOR <span id="morale">70</span></div>
+      <div class="stat">LOC <span id="location">Home Base</span></div>
+    </header>
+
+    <main id="game-area">
+      <div id="scene">
+        <div id="pixel-scene"></div>
+        <div id="event-title">WAITING...</div>
+        <div id="event-text"></div>
+      </div>
+
+      <aside id="journal">
+        <h3>SURVIVOR LOG</h3>
+        <div id="log"></div>
+      </aside>
+    </main>
+
+    <section id="resources">
+      <span>🍖 <span id="food">5</span></span>
+      <span>💧 <span id="water">5</span></span>
+      <span>🔫 <span id="ammo">10</span></span>
+      <span>🔧 <span id="scrap">0</span></span>
+      <span>💊 <span id="medkits">1</span></span>
+    </section>
+
+    <section id="choices">
+      <button class="choice" data-key="red" id="btn-red">RED</button>
+      <button class="choice" data-key="blue" id="btn-blue">BLUE</button>
+      <button class="choice" data-key="green" id="btn-green">GREEN</button>
+      <button class="choice" data-key="yellow" id="btn-yellow">YELLOW</button>
+      <button class="choice utility" data-key="confirm" id="btn-confirm">MEDKIT</button>
+    </section>
+
+    <footer>
+      <button id="new-game">NEW GAME</button>
+      <span id="status">CONNECTED</span>
+    </footer>
+  </div>
+
+  <script src="/static/js/websocket.js"></script>
+  <script src="/static/js/pixel.js"></script>
+  <script src="/static/js/ui.js"></script>
+  <script src="/static/js/game.js"></script>
+</body>
+</html>
