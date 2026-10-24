@@ -68,6 +68,12 @@ const COMBOS = {
     }
     comboFlash("🔇 AUDIO TOGGLE");
   },
+  "2+4": () => {
+    if (window.WeatherStation) {
+      WeatherStation.toggle();
+      comboFlash(WeatherStation.isVisible() ? "🛰 WEATHER STATION ONLINE" : "🛰 WEATHER STATION OFFLINE");
+    }
+  },
 };
 
 const _held = new Set();
@@ -181,6 +187,15 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "g" || e.key === "G" || e.key === "Escape") {
     e.preventDefault();
     toggleGuide();
+    return;
+  }
+
+  // Shortcut: W toggles the ridge weather station
+  if (e.key === "w" || e.key === "W") {
+    if (window.WeatherStation && window.__rdState && window.__rdState.scenario === "dead_ridge") {
+      e.preventDefault();
+      WeatherStation.toggle();
+    }
     return;
   }
 

@@ -366,6 +366,10 @@ function updateUI(state) {
     CityMap.update(state);
   }
 
+  // 14b. FORESTOS LAPTOP OVERLAY & WEATHER STATION (Dead Ridge)
+  if (window.LaptopOS) LaptopOS.update(state);
+  if (window.WeatherStation) WeatherStation.update(state);
+
   // 15. GAME OVER / ENDING DISPLAY
   if (state.game_over) {
     document.getElementById("event-title").textContent =
