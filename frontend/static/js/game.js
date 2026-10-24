@@ -9,6 +9,7 @@ const socket = new GameSocket(
 window.socket = socket;
 
 socket.on("state", (state) => {
+  window.__rdState = state; // shared with pixel.js (party/seal lookups)
   updateUI(state);
 });
 
@@ -52,6 +53,49 @@ function press(key) {
   }
 }
 
+// ── BUTTON COMBINATIONS ─────────────────────────────────────────────
+// Two arcade keys pressed together trigger cabinet-level commands.
+const COMBOS = {
+  "1+2": () => { if (window.CityMap) CityMap.toggle(); comboFlash("🗺 TACTICAL MAP"); },
+  "3+4": () => { toggleGuide(); comboFlash("📟 FIELD MANUAL"); },
+  "1+4": () => { socket.send({ action: "page" }); comboFlash("📄 MORE STORIES"); },
+  "2+3": () => {
+    if (window.SFX) {
+      SFX.ensure();
+      const muted = SFX.toggleMute();
+      const btn = document.getElementById("btn-mute");
+      if (btn) btn.textContent = muted ? "SOUND: OFF" : "SOUND: ON";
+    }
+    comboFlash("🔇 AUDIO TOGGLE");
+  },
+};
+
+const _held = new Set();
+
+function comboFlash(msg) {
+  if (window.SFX) { SFX.ensure(); SFX.beep(740, 0.05, "square", 0.04); setTimeout(() => SFX.beep(1108, 0.08, "square", 0.04), 60); }
+  const el = document.getElementById("toast");
+  const body = document.getElementById("toast-body");
+  if (el && body) {
+    body.textContent = msg;
+    el.classList.remove("hidden");
+    el.classList.add("visible", "combo");
+    setTimeout(() => { el.classList.remove("visible", "combo"); el.classList.add("hidden"); }, 1400);
+  }
+}
+
+function toggleGuide(force) {
+  const g = document.getElementById("guide-overlay");
+  if (!g) return;
+  const show = force != null ? force : g.classList.contains("hidden");
+  g.classList.toggle("hidden", !show);
+  g.classList.toggle("visible", show);
+}
+
+document.addEventListener("keyup", (e) => {
+  if ("1234".includes(e.key)) _held.delete(e.key);
+});
+
 // 1. ARCADE BUTTON CLICKS
 document.querySelectorAll(".arcade-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -87,6 +131,9 @@ document.getElementById("btn-map").addEventListener("click", () => {
   if (window.CityMap) CityMap.toggle();
 });
 
+document.getElementById("btn-guide").addEventListener("click", () => toggleGuide());
+document.getElementById("guide-close").addEventListener("click", () => toggleGuide(false));
+
 // 3. KEYBOARD EVENT LISTENER
 document.addEventListener("keydown", (e) => {
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
@@ -102,9 +149,38 @@ document.addEventListener("keydown", (e) => {
     "Enter": "confirm",
   };
 
+  // Combo detection: two of 1/2/3/4 held together
+  if ("1234".includes(e.key)) {
+    if (_held.size > 0) {
+      const other = [..._held][0];
+      const combo = [other, e.key].sort().join("+");
+      _held.clear();
+      if (COMBOS[combo]) {
+        e.preventDefault();
+        COMBOS[combo]();
+        return;
+      }
+    }
+    _held.add(e.key);
+  }
+
   if (keyMap[e.key]) {
     e.preventDefault();
     press(keyMap[e.key]);
+    return;
+  }
+
+  // Shortcut: 5 (or G on the scenario menu) flips story-select pages
+  if (e.key === "5") {
+    e.preventDefault();
+    socket.send({ action: "page" });
+    return;
+  }
+
+  // Shortcut: G / Esc toggles the beginner's guide
+  if (e.key === "g" || e.key === "G" || e.key === "Escape") {
+    e.preventDefault();
+    toggleGuide();
     return;
   }
 

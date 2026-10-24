@@ -87,6 +87,8 @@ class GameState:
     confirm_label: str = "REST"
     fx: str = ""
     scene: str = "base"
+    seg: str = " "  # 7-segment char, synced engine->display+web
+    seg_danger: bool = False  # drives the flashing red danger state
     kid_name: str = "Eli"
     scenario: str = "apartment"
 
@@ -148,6 +150,8 @@ class GameState:
             "confirm_label": self.confirm_label,
             "fx": self.fx,
             "scene": self.scene,
+            "seg": self.seg,
+            "seg_danger": self.seg_danger,
             "kid_name": self.kid_name,
             "scenario": self.scenario,
             "infection_stage": self.infection_stage(),
@@ -198,6 +202,10 @@ class GameState:
         state.last_action = data.get("last_action", "")
         state.confirm_label = data.get("confirm_label", "REST")
         state.scene = data.get("scene", "base")
+        state.seg = data.get("seg", " ")
+        state.seg_danger = bool(data.get("seg_danger", False))
         state.kid_name = data.get("kid_name", "Eli")
         state.scenario = data.get("scenario", "apartment")
+        state.seg = data.get("seg", " ")
+        state.seg_danger = bool(data.get("seg_danger", False))
         return state

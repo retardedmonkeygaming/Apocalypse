@@ -32,8 +32,8 @@
           </div>
 
           <!-- PHYSICAL 7-SEGMENT MIRROR -->
-          <div class="seg-housing" title="Hardware 7-Segment Mirror (Health Tens Digit / P / E)">
-            <span class="seg-label">HEALTH DIGIT</span>
+          <div class="seg-housing" title="Hardware 7-Segment Mirror — digit, mode letter & danger blink">
+            <span class="seg-label" id="seg-label">HEALTH DIGIT</span>
             <div id="seg" class="seg">
               <div class="seg-d a"></div>
               <div class="seg-d b"></div>
@@ -187,21 +187,87 @@
           </button>
         </section>
 
+        <!-- EMAIL / EVENT TOAST -->
+        <div id="toast" class="hidden" role="status" aria-live="polite">
+          <span class="toast-icon">📧</span>
+          <span id="toast-body"></span>
+        </div>
+
         <!-- MONITOR FOOTER -->
         <footer id="crt-footer">
           <div class="footer-left">
             <button id="btn-new-game" class="utility-btn" title="Abandon run and restart [N]">NEW RUN</button>
             <button id="btn-mute" class="utility-btn" title="Toggle audio synthesizer [M]">SOUND: ON</button>
             <button id="btn-scanlines" class="utility-btn" title="Toggle CRT scanlines">CRT: VINTAGE</button>
-            <button id="btn-map" class="utility-btn map-btn" title="Toggle city reconnaissance map [Tab]">🗺 MAP</button>
+            <button id="btn-map" class="utility-btn map-btn" title="Toggle city reconnaissance map [Tab or Combo 1+2]">🗺 MAP</button>
+            <button id="btn-guide" class="utility-btn" title="Beginner's Guide [G or Combo 3+4]">❓ GUIDE</button>
           </div>
           <div class="footer-center">
-            <span class="controls-hint">Keys: <b>1-4</b> Select · <b>Space</b> Confirm · <b>Tab</b> Map · <b>N</b> New Run · <b>M</b> Mute</span>
+            <span class="controls-hint">Keys: <b>1-4</b> Select · <b>Space</b> Confirm · <b>Tab</b> Map · <b>G</b> Guide · Combos: <b>1+2</b> Map · <b>3+4</b> Guide · <b>1+4</b> More Stories · <b>2+3</b> Mute</span>
           </div>
           <div class="footer-right">
             <span class="status-pill" id="status">CONNECTING</span>
           </div>
         </footer>
+      </div>
+    </div>
+  </div>
+
+  <!-- BEGINNER'S GUIDE OVERLAY -->
+  <div id="guide-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Beginner's Guide">
+    <div id="guide-panel">
+      <header id="guide-header">
+        <span>📟 CHANNEL 7 — OPERATOR'S FIELD MANUAL</span>
+        <button id="guide-close" title="Close guide [G / Esc]">✕ CLOSE [G]</button>
+      </header>
+      <div id="guide-body">
+        <section>
+          <h3>① THE LOOP</h3>
+          <p>You wake behind a barricade (or a fire-tower hatch) every dawn. Each day you get
+          <b>2 actions</b> — scavenge, craft, fortify, talk — then night falls. Survive, manage
+          hunger/thirst/infection, and push toward your run's finish line (Day 21 extraction in the
+          classic story; Day 30 in <b>Dead Ridge</b>).</p>
+        </section>
+        <section>
+          <h3>② THE BUTTONS</h3>
+          <p><b>1 / 2 / 3 / 4</b> (red/blue/green/yellow) pick the matching on-screen choice.
+          <b>SPACE</b> hits the labelled utility button (REST, BACK, LOCK SYNC, MEDKIT…).
+          The keyboard and the physical arcade deck send identical commands.</p>
+        </section>
+        <section>
+          <h3>③ BUTTON COMBINATIONS</h3>
+          <p>Press two arcade keys together (or their keyboard twins):<br>
+          <b>1+2</b> → toggle the reconnaissance MAP · <b>3+4</b> → this GUIDE ·
+          <b>1+4</b> → next STORY page on run start · <b>2+3</b> → mute/unmute audio.</p>
+        </section>
+        <section>
+          <h3>④ THE 7-SEGMENT MIRROR</h3>
+          <p>The little LED mirrors the physical hardware display:
+          <b>0-9</b> health tens digit · <b>C</b> combat · <b>H/n</b> hub day/night ·
+          <b>F</b> laptop · <b>b</b> calibrating · <b>L</b> logging · <b>R</b> radio ·
+          <b>M</b> map · <b>S</b> sanity critical · <b>P/E</b> pass/fail ending.
+          It <b>flashes red</b> in any danger state — low health, sieges, sanity collapse.</p>
+        </section>
+        <section>
+          <h3>⑤ WATCHERS OF DEAD RIDGE (story mode)</h3>
+          <p>Pick it from the story menu (page 2 via combo <b>1+4</b>). You are the watchman of
+          Fire-Tower 2 for 30 days. Submit an <b>enviro-log every day</b>: run <b>Barometric
+          Calibration</b> on the laptop first, steer the deviation to ±2 mb with the <b>&lt;&lt; / &lt; / &gt; / &gt;&gt;</b>
+          buttons, then <b>LOCK SYNC</b> (SPACE) and enter the validation string in the Log Engine.
+          <br><b>The trap:</b> when the SOUTH ARRAY reads <i>1013 mb / MIMICRY INTERFERENCE</i>, that
+          value is the creature exhaling on the sensor — exclude it and calibrate on North + Valley only.
+          <br>Watch the windows, tune the shortwave (channels 14/88/104), and explore the overworld
+          (<b>Tab</b> / combo <b>1+2</b>) for documents. Sanity below 50 and the radio starts learning
+          your voice. Make it to Day 30 with logs, friends and your mind intact for the best ending.</p>
+        </section>
+        <section>
+          <h3>⑥ SURVIVAL TIPS</h3>
+          <p>· Food &amp; water tick down every dawn — forage or starve.<br>
+          · Fortify before night: barricades cut siege odds hard.<br>
+          · Sanity (Resolve) is a real resource in Dead Ridge: keep it above 30 or the segment
+          display turns into an alarm.<br>
+          · If an email, radio voice, or friend asks you to open something — read it twice first.</p>
+        </section>
       </div>
     </div>
   </div>

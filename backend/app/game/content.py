@@ -574,6 +574,19 @@ SCENARIOS: Dict[str, Dict[str, Any]] = {
             "The service pistol has one magazine left, and you have one question left to answer.",
         ],
     },
+    "dead_ridge": {
+        "name": "WATCHERS OF DEAD RIDGE",
+        "tag": "30-day psychological horror — radio, barometers & the thing in the pines",
+        "player": {"morale": 85, "humanity": 20, "food": 8, "water": 8, "ammo": 4},
+        "fort": 3,
+        "known": [],
+        "weapon": None,
+        "inventory": [],
+        "log": [
+            "FORESTOS v4.2 booting... amber phosphor warm. Radio cold.",
+            "Fire-Tower 2, Dead Ridge. Ozone, wet pine, and one missing ranger.",
+        ],
+    },
 }
 
 SCENARIO_ORDER = ["apartment", "nomad", "medic", "soldier"]

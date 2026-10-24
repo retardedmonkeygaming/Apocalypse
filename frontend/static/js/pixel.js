@@ -76,6 +76,12 @@ const Scene = {
 
     const isBase = scene === "base" || scene === "craft" || scene === "talk" || scene === "quiet" || (loc === "Home Base" && state.mode !== "combat");
 
+    // DEAD RIDGE story mode has its own procedural renderer
+    if (state.scenario === "dead_ridge") {
+      this.drawRidge(ctx, state, t);
+      return;
+    }
+
     // 1. SKY GRADIENT & CELESTIAL BODIES
     this.drawSky(ctx, pal, night, t);
 
@@ -442,6 +448,419 @@ const Scene = {
       if ((t % 95) < 3) {
         ctx.fillStyle = "rgba(230, 240, 255, 0.45)";
         ctx.fillRect(0, 0, 320, 180);
+      }
+    }
+  },
+
+  /* ══════════════════════════════════════════════════════════════
+     THE WATCHERS OF DEAD RIDGE — procedural 2.5D watchtower scenes
+     ══════════════════════════════════════════════════════════════ */
+
+  drawRidge(ctx, state, t) {
+    const w = state.world || {};
+    const flags = w.flags || {};
+    const p = state.player || {};
+    const night = !!w.is_night || !!flags.rd_eclipse;
+    const scene = (state.scene || "ridge_tower").toLowerCase();
+    const sanity = p.morale != null ? p.morale : 100;
+    const wind = 0.5 + (p.humanity || 0) / 120; // wind rises with awareness
+
+    // Sky / fog backdrop
+    this.drawRidgeSky(ctx, night, t, flags.rd_eclipse);
+
+    if (scene === "ridge_tower" || scene === "ridge_radio" || scene === "ridge_laptop") {
+      this.drawRidgePines(ctx, night, t, wind, 96);
+      this.drawRidgeCabin(ctx, flags, p, t, sanity);
+    } else if (scene === "ridge_bridge") {
+      this.drawRidgeBridge(ctx, t);
+    } else if (scene === "ridge_mine") {
+      this.drawRidgeMine(ctx, t);
+    } else if (scene === "ridge_cabins") {
+      this.drawRidgePines(ctx, night, t, wind, 104);
+      this.drawRidgeCabinSite(ctx, t, sanity);
+    } else if (scene === "ridge_radar") {
+      this.drawRidgeRadar(ctx, t, flags);
+    } else if (scene === "ridge_tower3") {
+      this.drawRidgePines(ctx, night, t, wind, 118);
+      this.drawTower3(ctx, t);
+    } else if (scene === "ridge_entity") {
+      this.drawRidgePines(ctx, night, t, wind * 1.6, 110);
+      this.drawRidgeEntity(ctx, t, sanity);
+    } else if (scene === "ridge_forest") {
+      this.drawRidgePines(ctx, night, t, wind, 120);
+      this.drawRidgeWalker(ctx, t, sanity);
+    } else if (scene === "ridge_ending") {
+      this.drawRidgePines(ctx, true, t, 2.2, 110);
+      this.drawRidgeEnding(ctx, t, state.victory);
+    } else {
+      this.drawRidgePines(ctx, night, t, wind, 110);
+    }
+
+    // Sanity tint — the world bleeds red as the mind frays
+    if (sanity <= 45) {
+      const alpha = (45 - sanity) / 45 * 0.16 + Math.sin(t * 0.08) * 0.02;
+      ctx.fillStyle = `rgba(150, 10, 30, ${Math.max(0, alpha)})`;
+      ctx.fillRect(0, 0, 320, 180);
+    }
+    // Eclipse — permanent violet-black cold
+    if (flags.rd_eclipse) {
+      ctx.fillStyle = "rgba(20, 8, 40, 0.20)";
+      ctx.fillRect(0, 0, 320, 180);
+    }
+  },
+
+  drawRidgeSky(ctx, night, t, eclipse) {
+    const grad = ctx.createLinearGradient(0, 0, 0, 140);
+    if (eclipse) {
+      grad.addColorStop(0, "#05030a");
+      grad.addColorStop(1, "#120a16");
+    } else if (night) {
+      grad.addColorStop(0, "#04070c");
+      grad.addColorStop(1, "#0c141b");
+    } else {
+      grad.addColorStop(0, "#3d4a52");
+      grad.addColorStop(1, "#8a968e"); // overcast Appalachian haze
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 320, 180);
+
+    if (night && !eclipse) {
+      for (let i = 0; i < 40; i++) {
+        const sx = (i * 67 + 9) % 320;
+        const sy = (i * 37 + 4) % 90;
+        const blink = Math.sin(t * 0.04 + i * 1.7) > 0.2;
+        px(ctx, sx, sy, 1, 1, blink ? "#cfd9e6" : "rgba(120,140,170,0.35)");
+      }
+      px(ctx, 278, 14, 9, 9, "#d9e2ec");
+      px(ctx, 275, 12, 7, 7, night ? "#04070c" : "#3d4a52");
+    } else if (!night) {
+      // Pale drowned sun behind the haze
+      px(ctx, 50, 22, 12, 12, "#e8e3cf");
+      px(ctx, 47, 19, 18, 18, "rgba(232,227,207,0.18)");
+    } else {
+      // Eclipse disc
+      px(ctx, 240, 18, 14, 14, "#2a1030");
+      px(ctx, 238, 16, 18, 18, "rgba(190,80,255,0.12)");
+    }
+  },
+
+  drawRidgePines(ctx, night, t, wind, baseY) {
+    const layers = [
+      { y: baseY - 34, c: night ? "#0a1210" : "#26362c", h: 34, sway: 0.5 },
+      { y: baseY - 18, c: night ? "#0d1814" : "#1d2b23", h: 44, sway: 1.0 },
+      { y: baseY, c: night ? "#050a08" : "#101a14", h: 58, sway: 1.6 },
+    ];
+    layers.forEach((L, li) => {
+      let x = -8 + li * 5;
+      let i = 0;
+      while (x < 330) {
+        const h = L.h * (0.65 + ((i * 37 + li * 11) % 40) / 100);
+        // Procedural tree sway: amplitude scales with wind metric
+        const sway = Math.sin(t * 0.045 + i * 1.3 + li) * L.sway * wind * 2.2;
+        const topX = x + sway;
+        const w = h * 0.42;
+        // Trunk
+        px(ctx, x - 1 + sway * 0.2, L.y - h * 0.35, 2, h * 0.35, night ? "#0b0f0c" : "#241c14");
+        // Three stacked boughs (pixel fir)
+        for (let s = 0; s < 3; s++) {
+          const sy = L.y - h + (h * 0.28) * s;
+          const sw = (w * (0.45 + s * 0.28));
+          const off = sway * (1 - s * 0.25);
+          px(ctx, topX - sw / 2 + off * 0.3, sy, sw, h * 0.3, L.c);
+          px(ctx, topX - sw / 2 + off * 0.3, sy + h * 0.3 - 1, sw, 1, night ? "#0e1512" : "#2c3d31");
+        }
+        x += 14 + ((i * 23) % 12);
+        i++;
+      }
+    });
+    // Rolling fog banks between the layers
+    for (let f = 0; f < 3; f++) {
+      const fy = baseY - 30 + f * 14;
+      const drift = ((t * (0.25 + f * 0.12)) % 420) - 60;
+      ctx.fillStyle = `rgba(180, 195, 190, ${0.10 - f * 0.02})`;
+      ctx.fillRect(0, fy, 320, 9 + f * 3);
+      ctx.fillStyle = `rgba(200, 212, 208, ${0.07})`;
+      ctx.fillRect((320 - drift) % 340 - 20, fy - 2, 120, 6);
+      ctx.fillRect((drift + 160) % 360 - 30, fy + 4, 90, 5);
+    }
+    // Ground
+    px(ctx, 0, baseY, 320, 180 - baseY, night ? "#05080a" : "#141c17");
+  },
+
+  drawRidgeCabin(ctx, flags, p, t, sanity) {
+    const seal = (window.__rdState && window.__rdState.world && window.__rdState.world.fortification) || 3;
+    // Cabin walls & floor
+    px(ctx, 0, 0, 320, 180, "rgba(20,14,10,0.0)");
+    px(ctx, 14, 22, 292, 12, "#241a12");   // ceiling beam
+    px(ctx, 14, 132, 292, 30, "#2b2016");  // floorboards
+    for (let fx = 20; fx < 300; fx += 26) {
+      px(ctx, fx, 133, 1, 28, "#1d150e");
+    }
+    // Big glass window pane — translucent so the pine/fog layers show through
+    px(ctx, 34, 36, 252, 94, "rgba(10,17,22,0.28)");
+    ctx.strokeStyle = "#3a2c1e";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(34, 36, 252, 94);
+    // Mullions
+    px(ctx, 118, 36, 3, 94, "#3a2c1e");
+    px(ctx, 198, 36, 3, 94, "#3a2c1e");
+    px(ctx, 34, 80, 252, 3, "#3a2c1e");
+
+    // Cracks — grow as the tower seal drops
+    const cracks = Math.max(0, 3 - seal);
+    for (let c = 0; c < cracks; c++) {
+      const cx = 60 + c * 70;
+      ctx.strokeStyle = "rgba(210,225,235,0.5)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, 40);
+      ctx.lineTo(cx + 8 + Math.sin(t * 0.02 + c) * 0.5, 60);
+      ctx.lineTo(cx - 4, 78);
+      ctx.lineTo(cx + 10, 100);
+      ctx.stroke();
+    }
+
+    // Three-beat finger taps (siege nights)
+    if (flags.rd_siege_night) {
+      const beat = Math.floor(t / 8) % 3;
+      const tapX = 70 + beat * 60;
+      px(ctx, tapX, 52, 2, 10, "rgba(190,200,205,0.7)");
+      px(ctx, tapX + 3, 50, 2, 12, "rgba(190,200,205,0.55)");
+    }
+
+    // Desk with FORESTOS laptop (amber glow) and shortwave radio
+    px(ctx, 40, 128, 88, 8, "#3e2b1d");
+    px(ctx, 52, 112, 40, 18, "#171d21");            // laptop body
+    const flick = Math.sin(t * 0.6) > -0.85 ? 1 : 0.6;
+    px(ctx, 54, 114, 36, 13, `rgba(229,142,60,${0.75 * flick})`); // amber screen
+    px(ctx, 56, 116, 22, 1, "rgba(30,16,4,0.8)");
+    px(ctx, 56, 119, 30, 1, "rgba(30,16,4,0.8)");
+    px(ctx, 56, 122, 16, 1, "rgba(30,16,4,0.8)");
+    // Radio with glowing dial
+    px(ctx, 100, 118, 24, 12, "#1a2126");
+    const dial = Math.sin(t * 0.2) > 0 ? "#ffcc66" : "#ff9933";
+    px(ctx, 116, 121, 3, 3, dial);
+    px(ctx, 122, 114, 1, 8, "#666"); // antenna
+    // Candle on the sill
+    px(ctx, 276, 120, 4, 8, "#d8c8a8");
+    px(ctx, 277, 116 + (t % 6 < 3 ? 0 : 1), 2, 4, (t % 9 < 5) ? "#ffe680" : "#ffaa33");
+
+    // Companions at the window
+    const npcs = (window.__rdState && window.__rdState.party) || [];
+    const cols = ["#7ab8d4", "#c8d47a", "#d4a07a"];
+    npcs.slice(0, 3).forEach((n, idx) => {
+      const alive = n.alive !== false;
+      if (!alive) return;
+      const x = 150 + idx * 34;
+      this.drawPerson(ctx, x, 130, { head: "#d8b28c", body: cols[idx], leg: "#22201c", arm: "#d8b28c" }, 2, t + idx * 4);
+    });
+  },
+
+  drawRidgeBridge(ctx, t) {
+    // Ravine walls
+    px(ctx, 0, 120, 60, 60, "#141c17");
+    px(ctx, 260, 120, 60, 60, "#141c17");
+    // Suspension cables
+    ctx.strokeStyle = "#4a3a2a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 40); ctx.quadraticCurveTo(160, 92, 320, 40);
+    ctx.stroke();
+    // Deck
+    px(ctx, 0, 96, 320, 10, "#3a2f24");
+    for (let x = 0; x < 320; x += 12) px(ctx, x, 106, 2, 6, "#241c14");
+    // Vertical suspenders
+    for (let x = 16; x < 320; x += 28) {
+      const sag = 92 - Math.abs(160 - x) * 0.0;
+      ctx.strokeStyle = "rgba(90,72,50,0.8)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, 40 + Math.abs(160 - x) * 0.17);
+      ctx.lineTo(x, 96);
+      ctx.stroke();
+    }
+    // Abandoned truck, doors open, radio alive
+    px(ctx, 190, 74, 36, 22, "#2c4438");
+    px(ctx, 194, 78, 12, 9, "#0a0f12");
+    px(ctx, 226, 78, 6, 14, "#22382e"); // open door
+    const rn = (t % 24 < 12) ? "#ffcc66" : "#885522";
+    px(ctx, 210, 82, 3, 2, rn); // dashboard radio glow
+    // Wheels
+    px(ctx, 194, 96, 6, 4, "#0c0f0c");
+    px(ctx, 216, 96, 6, 4, "#0c0f0c");
+    // Instant fog wall creeping from the left
+    const fogX = (t * 0.8) % 400;
+    ctx.fillStyle = "rgba(190,202,198,0.20)";
+    ctx.fillRect(Math.max(0, 160 - fogX), 30, 160, 120);
+  },
+
+  drawRidgeMine(ctx, t) {
+    px(ctx, 0, 0, 320, 180, "#07090b");
+    // Limestone walls with teeth marks
+    px(ctx, 20, 0, 30, 180, "#2a2b28");
+    px(ctx, 270, 0, 30, 180, "#2a2b28");
+    for (let y = 20; y < 160; y += 18) {
+      px(ctx, 24, y, 20, 3, "#191a18");
+      px(ctx, 274, y + 8, 20, 3, "#191a18");
+    }
+    // Generator + breaker
+    px(ctx, 120, 90, 80, 60, "#23302f");
+    px(ctx, 128, 100, 18, 14, "#10181a");
+    const glow = (t % 30 < 15) ? "#7dff9a" : "#2f7d4a";
+    px(ctx, 132, 104, 4, 4, glow);
+    px(ctx, 160, 96, 8, 26, "#3c4a48"); // breaker handle
+    px(ctx, 160, 96 + (t % 40 < 20 ? 0 : 8), 8, 10, "#8a9a96");
+    // Elevator shaft mouth (right) — the voice comes from below
+    px(ctx, 226, 40, 34, 140, "#020304");
+    ctx.strokeStyle = "rgba(120,130,140,0.35)";
+    ctx.strokeRect(226, 40, 34, 140);
+    // Lantern light cone
+    const flick = 0.5 + Math.sin(t * 0.35) * 0.15 + Math.sin(t * 1.7) * 0.05;
+    const g = ctx.createRadialGradient(90, 70, 4, 90, 70, 90);
+    g.addColorStop(0, `rgba(255,190,90,${0.30 * flick})`);
+    g.addColorStop(1, "rgba(255,190,90,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 320, 180);
+    px(ctx, 86, 60, 6, 10, "#caa25c");
+    px(ctx, 87, 56, 4, 4, "#ffe6a0");
+    // Whisper puffs drifting from the shaft
+    if (Math.floor(t / 20) % 3 === 0) {
+      ctx.fillStyle = "rgba(180,190,200,0.10)";
+      ctx.fillRect(200 - (t % 20) * 1.5, 120, 14, 4);
+    }
+  },
+
+  drawRidgeCabinSite(ctx, t, sanity) {
+    // Cabin 2 exterior with rotted skylight
+    px(ctx, 60, 70, 200, 70, "#2c2118");
+    // Roof
+    ctx.fillStyle = "#1f1710";
+    ctx.beginPath();
+    ctx.moveTo(50, 74); ctx.lineTo(160, 44); ctx.lineTo(270, 74);
+    ctx.closePath(); ctx.fill();
+    // Skylight hole
+    px(ctx, 140, 56, 40, 14, "#0a0d10");
+    px(ctx, 140, 56, 40, 1, "#4a3a28");
+    // The thing on the roof — elongated silhouette, scaling
+    const bob = Math.sin(t * 0.12) * 2;
+    const sc = 1 + Math.sin(t * 0.07) * 0.12; // breathing scale
+    const ex = 152, ey = 40 + bob;
+    px(ctx, ex, ey - 26 * sc, 6 * sc, 26 * sc, "#3a3f3c");   // torso
+    px(ctx, ex + 1, ey - 32 * sc, 4 * sc, 6 * sc, "#565b57"); // head
+    px(ctx, ex - 4, ey - 22 * sc, 3, 16 * sc, "#3a3f3c");     // arm
+    px(ctx, ex + 7, ey - 22 * sc, 3, 16 * sc, "#3a3f3c");     // arm
+    px(ctx, ex + 1, ey - 28 * sc, 4, 2, "#7a5c3a");           // Pendelton collar
+    // Window glow inside
+    const gl = (t % 40 < 20) ? "rgba(229,142,60,0.5)" : "rgba(229,142,60,0.25)";
+    px(ctx, 90, 92, 22, 18, gl);
+    px(ctx, 200, 92, 22, 18, gl);
+    px(ctx, 148, 92, 22, 26, "rgba(229,142,60,0.35)");
+  },
+
+  drawRidgeRadar(ctx, t, flags) {
+    px(ctx, 0, 0, 320, 180, "#04120a");
+    if (flags.rd_radar_dead) {
+      ctx.fillStyle = "#e58e3c";
+      ctx.font = "8px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("OUT OF RANGE // SENSOR ARRAYS COMPROMISED", 160, 90);
+      return;
+    }
+    ctx.strokeStyle = "rgba(60,220,120,0.18)";
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x < 320; x += 12) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 180); ctx.stroke(); }
+    for (let y = 0; y < 180; y += 12) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(320, y); ctx.stroke(); }
+    // Density vectors drifting west→east
+    for (let i = 0; i < 22; i++) {
+      const vx = (i * 47 + t * 1.6) % 340 - 10;
+      const vy = (i * 31) % 170 + 5;
+      px(ctx, vx, vy, 3, 1, "rgba(90,240,150,0.55)");
+    }
+    // The void anomaly — sitting dead center, moving against the wind
+    const ax = 160 + Math.sin(t * 0.03) * 18;
+    const pulse = 10 + Math.sin(t * 0.1) * 3;
+    const grad = ctx.createRadialGradient(ax, 90, 2, ax, 90, pulse + 8);
+    grad.addColorStop(0, "rgba(255,60,60,0.7)");
+    grad.addColorStop(0.6, "rgba(160,20,20,0.35)");
+    grad.addColorStop(1, "rgba(120,10,10,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(ax, 90, pulse + 8, 0, Math.PI * 2); ctx.fill();
+    px(ctx, ax - 1, 89, 2, 2, "#ffcccc");
+  },
+
+  drawRidgeEntity(ctx, t, sanity) {
+    // Silhouette scaling against the fog layer
+    const sc = 1.6 + Math.sin(t * 0.05) * 0.35 + (60 - Math.min(60, sanity)) * 0.008;
+    const cx = 210 + Math.sin(t * 0.02) * 10;
+    const baseY = 150;
+    px(ctx, cx, baseY - 70 * sc, 10 * sc, 70 * sc, "#23282a");    // elongated torso
+    px(ctx, cx + 1.5 * sc, baseY - 82 * sc, 7 * sc, 12 * sc, "#3c4240"); // wet-ash head
+    px(ctx, cx - 6 * sc, baseY - 60 * sc, 4 * sc, 46 * sc, "#23282a");   // arms
+    px(ctx, cx + 12 * sc, baseY - 60 * sc, 4 * sc, 46 * sc, "#23282a");
+    // No eyes — just a seam
+    px(ctx, cx + 3 * sc, baseY - 77 * sc, 4 * sc, 1, "#0d1112");
+    // Hand-scratching particles on the glass panel (right edge, three-beat)
+    const beat = Math.floor(t / 7) % 4;
+    for (let i = 0; i < beat + 1; i++) {
+      const sx = 300 - i * 4 - ((t * 3) % 3);
+      const sy = 30 + i * 9 + Math.sin(t * 0.4 + i) * 2;
+      px(ctx, sx, sy, 1, 6, "rgba(235,245,250,0.75)");
+      if (i % 2 === 0) px(ctx, sx + 1, sy + 5, 2, 1, "rgba(235,245,250,0.4)");
+    }
+  },
+
+  drawRidgeWalker(ctx, t, sanity) {
+    // Something at the treeline that is not a tree
+    const lean = Math.sin(t * 0.03) * 3;
+    const sc = 1.8 + Math.sin(t * 0.06) * 0.2;
+    const x = 232 + lean;
+    px(ctx, x, 150 - 62 * sc, 7 * sc, 62 * sc, "#0c1110");
+    px(ctx, x + 1, 150 - 72 * sc, 5 * sc, 10 * sc, "#141a18");
+    // Asymmetric stride when it steps
+    if (Math.floor(t / 30) % 2 === 0) {
+      px(ctx, x - 3, 150 - 6, 3, 6, "#0c1110");
+    }
+  },
+
+  drawTower3(ctx, t) {
+    // Distant southern tower — green morse: H·E·L·P
+    px(ctx, 150, 60, 4, 60, "#1a1f22");
+    px(ctx, 140, 52, 24, 8, "#232a2e");
+    px(ctx, 144, 46, 16, 6, "#2c343a");
+    // Morse: three rhythmic bursts repeating H-E-L-P rhythm
+    const morseOn = (t % 64) < 8 || (t % 64) >= 16 && (t % 64) < 24 || (t % 64) >= 32 && (t % 64) < 40 || (t % 64) >= 48 && (t % 64) < 56;
+    const c = morseOn ? "#4dff88" : "#0d3a1e";
+    px(ctx, 146, 48, 6, 3, c);
+    if (morseOn) {
+      ctx.fillStyle = "rgba(80,255,140,0.10)";
+      ctx.beginPath(); ctx.arc(149, 49, 14, 0, Math.PI * 2); ctx.fill();
+    }
+  },
+
+  drawRidgeEnding(ctx, t, victory) {
+    if (victory) {
+      // Dawn breaking over the ridge
+      const grad = ctx.createLinearGradient(0, 0, 0, 120);
+      const k = Math.min(1, (t % 200) / 200);
+      grad.addColorStop(0, `rgba(255,190,110,${0.25 + k * 0.3})`);
+      grad.addColorStop(1, "rgba(120,90,60,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 320, 120);
+      px(ctx, 40, 26, 14, 14, "#ffe8b0");
+    } else {
+      // Glass shattering inward + fog pouring in
+      for (let i = 0; i < 26; i++) {
+        const sx = (i * 53 + t * 2) % 320;
+        const sy = (i * 29 + t * 3) % 180;
+        px(ctx, sx, sy, 2, 2, "rgba(220,235,245,0.5)");
+      }
+      ctx.fillStyle = `rgba(195,208,205,${0.15 + Math.sin(t * 0.05) * 0.05})`;
+      ctx.fillRect(0, 60, 320, 120);
+      // The long gray arm
+      const reach = Math.min(90, (t % 120) * 0.9);
+      px(ctx, 320 - reach, 120, reach, 5, "#5a615e");
+      for (let f = 0; f < 4; f++) {
+        px(ctx, 320 - reach + f * 3, 116 - f * 2, 2, 6, "#5a615e");
       }
     }
   },

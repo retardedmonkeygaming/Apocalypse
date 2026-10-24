@@ -8,7 +8,7 @@
 const CityMap = (() => {
   // ── Node layout (city grid — all coordinates in 0-1 normalized space) ──
   // Each entry: [id, label, nx, ny]   (nx/ny = 0..1 fraction of map canvas)
-  const NODES = [
+  const _CITY_NODES = [
     { id: "Home Base",           x: 0.50, y: 0.52, icon: "🏠" },
     { id: "Streets",             x: 0.50, y: 0.38, icon: "🛣" },
     { id: "Abandoned Mall",      x: 0.22, y: 0.26, icon: "🏪" },
@@ -33,7 +33,7 @@ const CityMap = (() => {
   ];
 
   // Roads as pairs of node IDs
-  const ROADS = [
+  const _CITY_ROADS = [
     ["Home Base", "Streets"],
     ["Home Base", "Church"],
     ["Home Base", "Subway Tunnels"],
@@ -68,6 +68,32 @@ const CityMap = (() => {
     ["Overpass Camp", "Memorial Stadium"],
     ["Waterworks", "Docks"],
     ["Memorial Stadium", "Waterworks"],
+  ];
+
+  // ── Dead Ridge overworld (story mode) ────────────────────────
+  const RIDGE_NODES = [
+    { id: "Fire-Tower 1", x: 0.78, y: 0.16, icon: "🗼" },
+    { id: "The Northern Ravine", x: 0.22, y: 0.20, icon: "⛰" },
+    { id: "The Copperhead Bridge", x: 0.20, y: 0.46, icon: "🌉" },
+    { id: "Fire-Tower 2", x: 0.76, y: 0.48, icon: "🗼" },
+    { id: "The Compass Cabins", x: 0.34, y: 0.62, icon: "🛖" },
+    { id: "Old Mining Shaft 4", x: 0.28, y: 0.86, icon: "⛏" },
+    { id: "Ranger Station Ruins", x: 0.60, y: 0.24, icon: "🏚" },
+    { id: "Overturned Railcar", x: 0.52, y: 0.36, icon: "🚆" },
+    { id: "Limestone Sinkhole", x: 0.66, y: 0.82, icon: "🕳" },
+  ];
+  const RIDGE_ROADS = [
+    ["Fire-Tower 1", "The Northern Ravine"],
+    ["The Northern Ravine", "The Copperhead Bridge"],
+    ["The Copperhead Bridge", "The Compass Cabins"],
+    ["The Compass Cabins", "Old Mining Shaft 4"],
+    ["The Compass Cabins", "Fire-Tower 2"],
+    ["Fire-Tower 2", "Fire-Tower 1"],
+    ["Fire-Tower 2", "Ranger Station Ruins"],
+    ["Ranger Station Ruins", "Overturned Railcar"],
+    ["Overturned Railcar", "The Northern Ravine"],
+    ["Old Mining Shaft 4", "Limestone Sinkhole"],
+    ["Limestone Sinkhole", "Fire-Tower 2"],
   ];
 
   // Colors
@@ -106,9 +132,13 @@ const CityMap = (() => {
 
   function _draw(state) {
     if (!_ctx || !_canvas) return;
-    const W = _canvas.width;
-    const H = _canvas.height;
-    const known = (state && state.world && state.world.known_locations) || [];
+    const isRidge = !!(state && state.scenario === "dead_ridge");
+    const NODES = isRidge ? RIDGE_NODES : _CITY_NODES;
+    const ROADS = isRidge ? RIDGE_ROADS : _CITY_ROADS;
+    const TITLE = isRidge ? "🌲  DEAD RIDGE OVERWORLD  🌲" : "⚠  CITY RECONNAISSANCE MAP  ⚠";
+    const known = isRidge
+      ? (state.world.flags.rd_visited || [])
+      : (state && state.world && state.world.known_locations) || [];
     const current = (state && state.world && state.world.location) || "Home Base";
     _t++;
 
@@ -132,13 +162,13 @@ const CityMap = (() => {
     _ctx.fillStyle = C.current;
     _ctx.font = "bold 9px monospace";
     _ctx.textAlign = "center";
-    _ctx.fillText("⚠  CITY RECONNAISSANCE MAP  ⚠", W / 2, 12);
+    _ctx.fillText(TITLE, W / 2, 12);
     _ctx.fillStyle = C.text;
     _ctx.font = "7px monospace";
     _ctx.textAlign = "right";
     _ctx.fillText(`LOCATIONS: ${known.length}/${NODES.length}`, W - 6, 12);
 
-    // Roads
+    // Roads (resolved from the active map set)
     ROADS.forEach(([a, b]) => {
       const na = NODES.find(n => n.id === a);
       const nb = NODES.find(n => n.id === b);
@@ -243,6 +273,15 @@ const CityMap = (() => {
       "Waterworks": "WTRWRK",
       "Overpass Camp": "CAMPOVR",
       "Memorial Stadium": "STADIUM",
+      "Fire-Tower 1": "TWR 1",
+      "Fire-Tower 2": "TWR 2",
+      "The Northern Ravine": "RAVINE",
+      "The Copperhead Bridge": "BRIDGE",
+      "The Compass Cabins": "CABINS",
+      "Old Mining Shaft 4": "SHAFT 4",
+      "Ranger Station Ruins": "RUINS",
+      "Overturned Railcar": "RAILCAR",
+      "Limestone Sinkhole": "SINKHOLE",
     };
     return abbr[id] || id.split(" ")[0].toUpperCase().slice(0, 6);
   }

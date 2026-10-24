@@ -27,6 +27,15 @@ CHAR_MAP = {
     "P": [1, 1, 0, 0, 1, 1, 1],
     "r": [0, 0, 0, 0, 1, 0, 1],
     "t": [0, 0, 0, 1, 1, 1, 1],
+    "S": [1, 0, 1, 1, 0, 1, 1],
+    "G": [1, 0, 1, 1, 1, 1, 1],
+    "U": [0, 1, 1, 1, 1, 1, 0],
+    "y": [0, 1, 1, 1, 0, 1, 1],
+    "g": [0, 1, 1, 1, 0, 1, 1],
+    "R": [1, 1, 0, 0, 1, 1, 1],
+    "W": [0, 1, 0, 1, 0, 1, 0],
+    "j": [0, 1, 1, 0, 0, 0, 0],
+    "u": [0, 1, 1, 1, 1, 0, 0],
     "-": [0, 0, 0, 0, 0, 0, 1],
     "_": [0, 0, 0, 1, 0, 0, 0],
     " ": [0, 0, 0, 0, 0, 0, 0],
@@ -108,3 +117,10 @@ class SevenSegment:
         """Show health tens digit (100 -> 9, 85 -> 8, 0 -> 0)."""
         digit = str(min(9, max(0, health // 10)))
         self.show(digit)
+
+    def show_danger(self, char: str = "d"):
+        """Alert pattern: shows the character (default 'd' for danger).
+
+        The WebUI mirrors this as a flashing red state via state.seg_danger.
+        """
+        self.show(char)

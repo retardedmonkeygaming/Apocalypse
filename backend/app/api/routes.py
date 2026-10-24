@@ -31,6 +31,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 await engine.handle_confirm()
             elif action == "new_game":
                 await engine.start_new_game()
+            elif action == "page":
+                await engine.cycle_page()
             elif action == "use_item":
                 item_id = data.get("item_id")
                 if item_id == "medkit" or item_id == "medkits":

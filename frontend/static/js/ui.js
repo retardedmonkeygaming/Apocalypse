@@ -29,9 +29,35 @@ const SEG_MAP = {
   P: "abfeg",
   r: "eg",
   t: "defg",
+  S: "afgcd",
+  G: "afgedc",
+  U: "bcdef",
+  y: "bcdeg",
+  g: "bcdfg",
+  R: "abfeg",
+  W: "bdf",
+  j: "bc",
+  u: "bcde",
   "-": "g",
   "_": "d",
   " ": "",
+};
+
+const SEG_LABELS = {
+  " ": "IDLE",
+  C: "COMBAT",
+  H: "HUB · DAY",
+  n: "HUB · NIGHT",
+  F: "FORESTOS",
+  b: "CALIBRATING",
+  L: "LOG ENGINE",
+  R: "SHORTWAVE",
+  M: "OVERWORLD",
+  S: "⚠ SANITY CRIT",
+  d: "⚠ DANGER",
+  L2: "LOG",
+  P: "SHIFT PASSED",
+  E: "SHIFT FAILED",
 };
 
 const ITEM_NAMES = {
@@ -92,21 +118,30 @@ function setBar(id, value, max) {
   el.style.width = pct + "%";
 }
 
-function showSeg(health, gameOver, victory, mode) {
+function showSeg(state) {
+  // Engine is now the single source of truth (state.seg / state.seg_danger),
+  // so the on-screen mirror can never drift from the physical 7-segment.
   let ch = " ";
-  if (gameOver) {
-    ch = victory ? "P" : "E";
-  } else if (mode === "combat") {
-    ch = "C";
+  let danger = false;
+  if (state && typeof state === "object" && "seg" in state) {
+    ch = String(state.seg || " ").trim() || " ";
+    danger = !!state.seg_danger;
   } else {
-    ch = String(Math.min(9, Math.max(0, Math.floor((health || 0) / 10))));
+    // Back-compat fallback (old save / raw health arg)
+    const health = typeof state === "number" ? state : (state && state.player && state.player.health) || 0;
+    ch = String(Math.min(9, Math.max(0, Math.floor(health / 10))));
   }
 
-  const on = SEG_MAP[ch] || "";
+  const on = SEG_MAP[ch] || SEG_MAP[ch.toUpperCase()] || "";
   document.querySelectorAll(".seg-d").forEach((d) => {
     const segName = [...d.classList].find((c) => "abcdefg".includes(c));
     d.classList.toggle("on", on.includes(segName));
   });
+
+  const segEl = document.getElementById("seg");
+  if (segEl) segEl.classList.toggle("danger", danger);
+  const lbl = document.getElementById("seg-label");
+  if (lbl) lbl.textContent = danger ? `⚠ ${SEG_LABELS[ch] || "ALERT"}` : (SEG_LABELS[ch] || "HEALTH DIGIT");
 }
 
 function escapeHtml(s) {
@@ -142,8 +177,8 @@ function updateUI(state) {
   setBar("bar-hum", p.humanity, 100);
   setBar("bar-fort", w.fortification, 10);
 
-  // 3. 7-SEGMENT DISPLAY
-  showSeg(p.health, state.game_over, state.victory, state.mode);
+  // 3. 7-SEGMENT DISPLAY (synced from engine)
+  showSeg(state);
 
   // 4. RESOURCES
   document.getElementById("food").textContent = p.food;
@@ -272,6 +307,27 @@ function updateUI(state) {
     .join("");
   logEl.scrollTop = logEl.scrollHeight;
 
+  // 11b. RIDGE MODE — relabel meters for the fire-watch story
+  const isRidge = state.scenario === "dead_ridge";
+  document.body.classList.toggle("ridge-mode", isRidge);
+  const barLabels = isRidge
+    ? ["VITALITY", "NOISE SIG", "SANITY", "AWARENESS", "TOWER SEAL"]
+    : null;
+  if (barLabels) {
+    const ids = [".hp-box .bar-meta span:first-child", ".inf-box .bar-meta span:first-child",
+                 ".mor-box .bar-meta span:first-child", ".hum-box .bar-meta span:first-child",
+                 ".fort-box .bar-meta span:first-child"];
+    ids.forEach((sel, i) => {
+      const el = document.querySelector(sel);
+      if (el) el.textContent = barLabels[i];
+    });
+    const stageChip = document.getElementById("stage");
+    if (stageChip) {
+      stageChip.textContent = state.player.morale <= 30 ? "⚠ BREAKING" : "HOLDING";
+      stageChip.className = state.player.morale <= 30 ? "stage-turning" : "stage-clean";
+    }
+  }
+
   // 12. SCREEN SHAKE & AUDIO FX
   document.body.classList.toggle("night", !!w.is_night);
   const shakeFx = ["shake", "danger", "hit", "gun"];
@@ -285,6 +341,19 @@ function updateUI(state) {
 
   if (window.SFX) {
     SFX.play(state.fx);
+    if (isRidge && window.SFX.ridgeAmbience) {
+      SFX.ridgeAmbience(p.morale, !!w.is_night);
+    }
+  }
+
+  // 12b. EMAIL TOAST + NOTIFICATION CHIME
+  if (isRidge && state.fx === "email") {
+    const inbox = (w.flags && w.flags.rd_inbox) || [];
+    const latest = inbox[inbox.length - 1];
+    if (latest && latest.id !== _toastLastId) {
+      _toastLastId = latest.id;
+      showToast(`FORESTOS: '${latest.subject}' — ${latest.frm}`);
+    }
   }
 
   // 13. RENDER PIXEL CANVAS
@@ -308,6 +377,24 @@ function updateUI(state) {
       22
     );
   }
+}
+
+let _toastLastId = "";
+let _toastTimer = null;
+
+function showToast(msg) {
+  const toast = document.getElementById("toast");
+  const body = document.getElementById("toast-body");
+  if (!toast || !body) return;
+  body.textContent = msg;
+  toast.classList.remove("hidden");
+  toast.classList.add("visible");
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => {
+    toast.classList.remove("visible");
+    toast.classList.add("hidden");
+  }, 4200);
+  if (window.SFX && SFX.emailChime) SFX.emailChime();
 }
 
 function handleItemClick(itemId) {

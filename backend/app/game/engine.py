@@ -18,6 +18,7 @@ from backend.app.game.content import (
     ending_for,
 )
 from backend.app.game.events import select_event
+from backend.app.game.ridge import RIDGE_ID, RidgeMode
 from backend.app.game.combat import make_combat, resolve_player_action
 from backend.app.hardware.display import SevenSegment
 from backend.app.hardware.buzzer import Buzzer
@@ -49,14 +50,41 @@ class GameEngine:
         self.save = SaveService()
         self._broadcast = None
         self._lock = asyncio.Lock()
+        self.ridge = RidgeMode(self)
 
     def set_broadcast(self, callback):
         self._broadcast = callback
 
     async def broadcast(self):
         if self._broadcast:
+            self._sync_seg()
             await self._broadcast(self.state.to_dict())
             self.state.fx = ""
+
+    def _sync_seg(self):
+        """Single source of truth for the 7-segment display (hardware + WebUI).
+
+        Fixes the drift where the physical digit and the on-screen mirror
+        disagreed during menus, combat and story modes.
+        """
+        s = self.state
+        if s.scenario == RIDGE_ID:
+            s.seg = self.ridge.seg_char()
+        elif s.game_over:
+            s.seg = "P" if s.victory else "E"
+        elif s.combat.active:
+            s.seg = "C"
+        else:
+            s.seg = str(min(9, max(0, s.player.health // 10)))
+
+        if s.scenario == RIDGE_ID:
+            s.seg_danger = s.seg in ("d", "S") or self.ridge.sanity() <= 30
+        else:
+            s.seg_danger = s.player.health <= 25
+        try:
+            self.display.show(s.seg)
+        except Exception:
+            pass
 
     async def start_new_game(self):
         kid = random.choice(KID_NAMES)
@@ -84,20 +112,38 @@ class GameEngine:
     def _scenario_menu(self):
         s = self.state
         s.menu = "scenario"
+        all_ids = SCENARIO_ORDER + [RIDGE_ID]
+        pages = max(1, (len(all_ids) + 3) // 4)
+        page = int(s.world.flags.get("_scen_page", 0)) % pages
+        shown = all_ids[page * 4: page * 4 + 4]
+
         lines = [
-            "Four survivor files slide across the desk. Each is a different way to have lived this long.",
+            f"SURVIVOR FILES — page {page + 1}/{pages}. Each is a different way to have lived this long.",
             "Pick your story — or let CONFIRM take the classic tale.",
             "",
         ]
-        for i, sid in enumerate(SCENARIO_ORDER):
+        for sid in shown:
             scn = SCENARIOS[sid]
-            lines.append(f"{i + 1}. {scn['name']} — {scn['tag']}")
+            lines.append(f"· {scn['name']} — {scn['tag']}")
+        if pages > 1:
+            lines.append("")
+            lines.append("More stories on the next page: press COMBO [1+4] or key [5].")
         choices = [
             {"label": SCENARIOS[sid]["name"], "effect": {"scenario": sid}}
-            for sid in SCENARIO_ORDER
+            for sid in shown
         ]
         self._show("CHOOSE YOUR STORY", "\n".join(lines), choices, "base", "menu", "CLASSIC")
         self.display.show("S")
+
+    async def cycle_page(self):
+        """Flip the story-select page (combo 1+4 / key 5 / hardware red+yellow)."""
+        async with self._lock:
+            if self.state.menu == "scenario":
+                f = self.state.world.flags
+                f["_scen_page"] = int(f.get("_scen_page", 0)) + 1
+                self._scenario_menu()
+                await self.buzzer.success()
+                await self.broadcast()
 
     async def _apply_scenario(self, sid: str):
         scn = SCENARIOS.get(sid, SCENARIOS["apartment"])
@@ -123,6 +169,12 @@ class GameEngine:
             s.log.append(line)
 
         s.clamp()
+        if sid == RIDGE_ID:
+            self.ridge.start()
+            await self.buzzer.success()
+            self.state.save()
+            await self.broadcast()
+            return
         self._hub_menu()
         self.display.show_health(p.health)
 
@@ -387,13 +439,20 @@ class GameEngine:
                 await self._after_effect()
                 return
             label = self.state.confirm_label
+            if self.state.scenario == RIDGE_ID and label == "LOCK SYNC":
+                await self.ridge.dispatch({"ridge": "cal_lock"})
+                await self._after_effect()
+                return
             if label == "REST":
                 await self.apply_effect({"rest": True})
                 await self._after_effect()
                 return
-            if label in ("BACK", "—"):
+            if label in ("BACK", "CLOSE LID", "—"):
                 if not self.state.combat.active:
-                    self._hub_menu()
+                    if self.state.scenario == RIDGE_ID:
+                        self.ridge.hub()
+                    else:
+                        self._hub_menu()
                     await self.broadcast()
                 return
             await self.use_medkit()
@@ -456,6 +515,16 @@ class GameEngine:
         if effect.get("scenario"):
             await self._apply_scenario(effect["scenario"])
             return
+        if self.state.scenario == RIDGE_ID:
+            if effect.get("rest"):
+                await self.ridge.sleep()
+                await self.ridge._flush_end()
+                await self._after_effect()
+                return
+            if "ridge" in effect:
+                await self.ridge.dispatch(effect)
+                await self._after_effect()
+                return
         if effect.get("expedition"):
             await self._start_expedition(effect["expedition"])
             return
