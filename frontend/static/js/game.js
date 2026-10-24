@@ -14,6 +14,15 @@ socket.on("state", (state) => {
 
 socket.connect();
 
+// Instant first paint: render from HTTP immediately instead of showing
+// "WAITING FOR BROADCAST..." until the WebSocket handshake completes.
+fetch("/api/state")
+  .then((r) => (r.ok ? r.json() : null))
+  .then((s) => {
+    if (s && s.player) updateUI(s);
+  })
+  .catch(() => {});
+
 function press(key) {
   const btnId = {
     red: "btn-red",

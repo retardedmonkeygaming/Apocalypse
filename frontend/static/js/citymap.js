@@ -23,6 +23,13 @@ const CityMap = (() => {
     { id: "Overgrown Park",      x: 0.18, y: 0.74, icon: "🌿" },
     { id: "Gas Station",         x: 0.66, y: 0.42, icon: "⛽" },
     { id: "Ruined Pharmacy",     x: 0.38, y: 0.18, icon: "💊" },
+    // ── Expanded city zones ──
+    { id: "Fire Station",        x: 0.74, y: 0.34, icon: "🚒" },
+    { id: "City Prison",         x: 0.90, y: 0.44, icon: "🔒" },
+    { id: "Bus Depot",           x: 0.52, y: 0.62, icon: "🚌" },
+    { id: "Waterworks",          x: 0.72, y: 0.64, icon: "🚰" },
+    { id: "Overpass Camp",       x: 0.12, y: 0.86, icon: "⛺" },
+    { id: "Memorial Stadium",    x: 0.58, y: 0.84, icon: "🏟" },
   ];
 
   // Roads as pairs of node IDs
@@ -46,6 +53,21 @@ const CityMap = (() => {
     ["Military Checkpoint", "Radio Tower"],
     ["School", "Radio Tower"],
     ["Ruined Pharmacy", "Military Checkpoint"],
+    // Expanded zones
+    ["Hospital", "Fire Station"],
+    ["Fire Station", "City Prison"],
+    ["Fire Station", "Gas Station"],
+    ["Warehouse", "City Prison"],
+    ["City Prison", "Waterworks"],
+    ["Home Base", "Bus Depot"],
+    ["Bus Depot", "Waterworks"],
+    ["Bus Depot", "Memorial Stadium"],
+    ["Subway Tunnels", "Bus Depot"],
+    ["Church", "Overpass Camp"],
+    ["Overgrown Park", "Overpass Camp"],
+    ["Overpass Camp", "Memorial Stadium"],
+    ["Waterworks", "Docks"],
+    ["Memorial Stadium", "Waterworks"],
   ];
 
   // Colors
@@ -215,6 +237,12 @@ const CityMap = (() => {
       "Overgrown Park": "PARK",
       "Gas Station": "GAS",
       "Ruined Pharmacy": "PHARM",
+      "Fire Station": "FIRE",
+      "City Prison": "PRISON",
+      "Bus Depot": "BUS",
+      "Waterworks": "WTRWRK",
+      "Overpass Camp": "CAMPOVR",
+      "Memorial Stadium": "STADIUM",
     };
     return abbr[id] || id.split(" ")[0].toUpperCase().slice(0, 6);
   }
@@ -315,3 +343,7 @@ const CityMap = (() => {
 
 // Auto-initialize (non-blocking)
 document.addEventListener("DOMContentLoaded", () => CityMap.init());
+
+// Classic scripts declare `const` in the global lexical scope, NOT on window.
+// game.js/ui.js check `window.CityMap` — without this the MAP button is dead.
+window.CityMap = CityMap;
