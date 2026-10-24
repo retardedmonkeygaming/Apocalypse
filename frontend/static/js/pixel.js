@@ -489,6 +489,8 @@ const Scene = {
     } else if (scene === "ridge_forest") {
       this.drawRidgePines(ctx, night, t, wind, 120);
       this.drawRidgeWalker(ctx, t, sanity);
+    } else if (scene.startsWith("ridge_loc")) {
+      this.drawRidgeLoc(ctx, state, t, night);
     } else if (scene === "ridge_ending") {
       this.drawRidgePines(ctx, true, t, 2.2, 110);
       this.drawRidgeEnding(ctx, t, state.victory);
@@ -824,6 +826,106 @@ const Scene = {
       const sy = 30 + i * 9 + Math.sin(t * 0.4 + i) * 2;
       px(ctx, sx, sy, 1, 6, "rgba(235,245,250,0.75)");
       if (i % 2 === 0) px(ctx, sx + 1, sy + 5, 2, 1, "rgba(235,245,250,0.4)");
+    }
+  },
+
+  /* Location-aware viewport: each overworld node gets its own pixel
+     composition — the center screen TRAVELS with the player. */
+  drawRidgeLoc(ctx, state, t, night) {
+    const p = state.player || {};
+    const scene = (state.scene || "").toLowerCase();
+    const fogD = 0.25 + Math.min(0.5, ((p.humanity || 0) / 200));
+
+    this.drawRidgePines(ctx, night, t, 0.8, 118);
+
+    if (scene.includes("t1") || scene.includes("tower1")) {
+      // Decommissioned Tower 1 — dark, service light dead after day 10
+      px(ctx, 130, 52, 6, 66, "#141a1d");
+      px(ctx, 118, 44, 30, 9, "#1d2429");
+      px(ctx, 122, 36, 22, 8, "#232b30");
+      const lit = (state.world.day || 1) < 10 && (t % 50 < 25);
+      px(ctx, 126, 38, 14, 3, lit ? "#ffb45e" : "#0a0d10");
+      px(ctx, 131, 20, 1, 16, "#333"); // dead antenna
+      // Path from the south, boot prints heading IN, none heading out
+      for (let fy = 150; fy > 122; fy -= 9) px(ctx, 158 + Math.sin(fy) * 3, fy, 3, 4, night ? "#0c1114" : "#2a2620");
+    } else if (scene.includes("ravine")) {
+      // The Northern Ravine — 300ft drop, fog pouring like water
+      px(ctx, 0, 110, 120, 70, night ? "#070a0c" : "#161d1a");
+      px(ctx, 200, 110, 120, 70, night ? "#070a0c" : "#161d1a");
+      for (let i = 0; i < 4; i++) {
+        const fy = 116 + i * 15;
+        const off = ((t * (0.5 + i * 0.2)) % 260) - 40;
+        ctx.fillStyle = `rgba(185,200,196,${0.16 - i * 0.03})`;
+        ctx.fillRect(off, fy, 140, 8);
+        ctx.fillRect(320 - off - 60, fy + 6, 110, 6);
+      }
+      // Far suspension cable of the Copperhead Bridge
+      ctx.strokeStyle = "rgba(80,64,44,0.7)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(110, 60); ctx.quadraticCurveTo(160, 78, 210, 60); ctx.stroke();
+    } else if (scene.includes("ruins")) {
+      // Ranger Station Ruins — charred foundation, cellar light
+      px(ctx, 70, 106, 180, 12, "#191410");
+      px(ctx, 78, 96, 14, 10, "#241c15"); px(ctx, 226, 96, 14, 10, "#241c15");
+      px(ctx, 150, 100, 26, 8, "#100c09"); // cellar mouth
+      const flick = (t % 37 < 18) ? "rgba(229,142,60,0.55)" : "rgba(229,142,60,0.18)";
+      px(ctx, 153, 103, 20, 4, flick); // something reading below
+      // Charred beams
+      px(ctx, 90, 70, 3, 40, "#0d0b09");
+      px(ctx, 210, 62, 3, 48, "#0d0b09");
+      px(ctx, 90, 70, 123, 3, "#0d0b09");
+    } else if (scene.includes("railcar")) {
+      // Overturned Railcar — tilted carriage on the ravine floor
+      ctx.save();
+      ctx.translate(160, 118); ctx.rotate(0.12);
+      px(ctx, -70, -26, 140, 30, night ? "#13191c" : "#2c343a");
+      for (let wx = -60; wx < 60; wx += 24) px(ctx, wx, -20, 12, 10, "#0a0e10");
+      px(ctx, -80, -6, 14, 26, "#0f1417"); px(ctx, 66, -6, 14, 26, "#0f1417");
+      ctx.restore();
+      // Black ice sheen
+      if (t % 90 < 30) { ctx.fillStyle = "rgba(190,220,235,0.12)"; ctx.fillRect(80, 140, 160, 3); }
+      // Lockbox glint
+      px(ctx, 196, 132, 5, 4, (t % 40 < 20) ? "#c8a24a" : "#6a5222");
+    } else if (scene.includes("sinkhole")) {
+      // Limestone Sinkhole — breathing pit
+      const g = ctx.createRadialGradient(160, 140, 4, 160, 140, 66);
+      g.addColorStop(0, "#000"); g.addColorStop(0.7, night ? "#05080a" : "#101614"); g.addColorStop(1, "rgba(16,22,20,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.ellipse(160, 140, 66, 26, 0, 0, Math.PI * 2); ctx.fill();
+      // Mist rising in breaths
+      const breathe = Math.sin(t * 0.06) * 0.5 + 0.5;
+      ctx.fillStyle = `rgba(190,205,200,${0.05 + breathe * 0.10})`;
+      ctx.fillRect(120, 128 - breathe * 20, 80, 20 + breathe * 20);
+      // Flare gun glint on the rim
+      px(ctx, 228, 128, 6, 2, (t % 60 < 30) ? "#d44" : "#611");
+    } else if (scene.includes("clearing")) {
+      // The impossible clearing — pines stepped back in a perfect arc
+      px(ctx, 0, 118, 320, 62, night ? "#0a0f0c" : "#18221b");
+      // Stump ring
+      for (let a = 0; a < 8; a++) {
+        const ax = 160 + Math.cos(a * 0.785) * 74;
+        const ay = 140 + Math.sin(a * 0.785) * 20;
+        px(ctx, ax - 3, ay - 4, 6, 6, "#241c12");
+        px(ctx, ax - 3, ay - 5, 6, 1, "#3a2c1c");
+      }
+      // Jar glint at center (Ash's beetle)
+      px(ctx, 157, 132, 6, 8, "rgba(180,200,190,0.35)");
+      px(ctx, 159, 134, 2, 2, (t % 30 < 15) ? "#e8c46a" : "#4a3a1a");
+      // The tree line leaning in, listening
+      ctx.strokeStyle = "rgba(10,16,12,0.9)"; ctx.lineWidth = 3;
+      for (let tx = 8; tx < 320; tx += 26) {
+        const lean = Math.sin(t * 0.03 + tx) * 2 + 3;
+        ctx.beginPath(); ctx.moveTo(tx, 118); ctx.lineTo(tx + lean, 88); ctx.stroke();
+      }
+    }
+
+    // Fog layer scales with awareness (threat) — the world closes in
+    for (let i = 0; i < 3; i++) {
+      const fy = 96 + i * 22;
+      const drift = ((t * (0.3 + i * 0.15)) % 400) - 60;
+      ctx.fillStyle = `rgba(186,200,196,${fogD * 0.16})`;
+      ctx.fillRect(drift, fy, 180, 12);
+      ctx.fillRect((340 - drift) % 380 - 30, fy + 8, 130, 9);
     }
   },
 

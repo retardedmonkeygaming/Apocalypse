@@ -50,6 +50,128 @@ const SFX = {
     return buf;
   },
 
+  // ── PSYCHOLOGICAL HORROR LAYER ─────────────────────────────
+  // ridgeTick() runs on every state push and keeps four reactive layers
+  // alive: heart/low-drone, glass scratching, almost-words, dead air.
+  ridgeTick(state) {
+    if (this.muted) { this._setBed(0); this._stopHorror(); return; }
+    if (!state || state.scenario !== "dead_ridge") { this._stopHorror(); return; }
+    const p = state.player || {};
+    const w = state.world || {};
+    const sanity = p.morale || 0;
+    const awareness = p.humanity || 0;
+    const night = !!w.is_night || !!(w.flags && w.flags.rd_eclipse);
+    this.ridgeAmbience(sanity, night);
+
+    // 1. Heartbeat / low pulse when the mind frays
+    if (sanity < 45 && !this._hbTimer) {
+      this._hbTimer = setInterval(() => {
+        this.beep(58, 0.14, "sine", 0.05 + (45 - sanity) * 0.0012);
+        setTimeout(() => this.beep(50, 0.18, "sine", 0.04), 210);
+      }, Math.max(700, 900 + sanity * 6));
+    } else if (sanity >= 45 && this._hbTimer) {
+      clearInterval(this._hbTimer); this._hbTimer = null;
+    }
+
+    // 2. Scratching on the glass when Awareness climbs
+    if (awareness >= 35 && !this._scTimer) {
+      this._scTimer = setInterval(() => {
+        if (Math.random() < 0.6) this._scratchBurst();
+      }, 3800 + Math.random() * 4000);
+    } else if (awareness < 35 && this._scTimer) {
+      clearInterval(this._scTimer); this._scTimer = null;
+    }
+
+    // 3. Wind that almost says words — random, rare, maddening
+    if (!this._whTimer) {
+      this._whTimer = setInterval(() => {
+        if (Math.random() < (sanity < 60 ? 0.55 : 0.25)) this._almostWord();
+      }, 16000 + Math.random() * 14000);
+    }
+
+    // 4. Dead air — the silence that is worse than noise
+    if (sanity < 35 && Math.random() < 0.02 && !this._deadAir) {
+      this._deadAir = setTimeout(() => {
+        this._setBed(0);
+        if (this._growl) this._growl.gg.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+        this._deadAir = setTimeout(() => { this._deadAir = null; }, 2600);
+      }, 100);
+    }
+  },
+
+  _stopHorror() {
+    ["_hbTimer", "_scTimer", "_whTimer"].forEach((k) => {
+      if (this[k]) { clearInterval(this[k]); this[k] = null; }
+    });
+  },
+
+  _scratchBurst() {
+    const c = this.ensure();
+    if (!c) return;
+    try {
+      for (let i = 0; i < 3; i++) {
+        const src = c.createBufferSource();
+        src.buffer = this._noiseBuf();
+        const hp = c.createBiquadFilter();
+        hp.type = "highpass"; hp.frequency.value = 2600 + i * 400;
+        const g = c.createGain();
+        const t0 = c.currentTime + i * 0.09;
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.05, t0 + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.07);
+        src.connect(hp); hp.connect(g); g.connect(c.destination);
+        src.start(t0); src.stop(t0 + 0.1);
+      }
+    } catch (e) { /* audio interrupted */ }
+  },
+
+  _almostWord() {
+    const c = this.ensure();
+    if (!c) return;
+    try {
+      // Band-passed noise shaped like a syllable — never quite a word
+      const src = c.createBufferSource();
+      src.buffer = this._noiseBuf();
+      const bp = c.createBiquadFilter();
+      bp.type = "bandpass"; bp.Q.value = 7;
+      const base = 480 + Math.random() * 500;
+      bp.frequency.setValueAtTime(base, c.currentTime);
+      bp.frequency.linearRampToValueAtTime(base * (Math.random() < 0.5 ? 0.6 : 1.5), c.currentTime + 0.5);
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.035, c.currentTime + 0.12);
+      g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.75);
+      src.connect(bp); bp.connect(g); g.connect(c.destination);
+      src.start(); src.stop(c.currentTime + 0.85);
+    } catch (e) { /* audio interrupted */ }
+  },
+
+  // The cabin dies, then something slams the glass
+  jumpscare() {
+    if (this.muted) return;
+    const c = this.ensure();
+    if (!c) return;
+    try {
+      // Silence first — 350ms of nothing
+      this._setBed(0);
+      if (this._hbTimer) { /* heartbeat keeps, that's the point */ }
+      const delay = 350;
+      // Dissonant stab + noise slam
+      setTimeout(() => {
+        [92, 97.5, 123].forEach((f) => this.beep(f, 0.9, "sawtooth", 0.09));
+        const src = c.createBufferSource();
+        src.buffer = this._noiseBuf();
+        const g = c.createGain();
+        g.gain.setValueAtTime(0.22, c.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.9);
+        src.connect(g); g.connect(c.destination);
+        src.start(); src.stop(c.currentTime + 0.95);
+        // Low sub-thump — felt more than heard
+        this.beep(36, 1.2, "sine", 0.12);
+      }, delay);
+    } catch (e) { /* audio interrupted */ }
+  },
+
   // Shortwave static bed — gain ramps with dread (used by Dead Ridge mode)
   ridgeAmbience(sanity, isNight) {
     if (this.muted) { this._setBed(0); return; }

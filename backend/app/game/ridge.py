@@ -85,6 +85,18 @@ NODES: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# Viewport scene per overworld node — the center screen travels with you
+NODE_SCENE = {
+    "Fire-Tower 1": "ridge_loc_t1",
+    "The Northern Ravine": "ridge_loc_ravine",
+    "The Copperhead Bridge": "ridge_bridge",
+    "The Compass Cabins": "ridge_cabins",
+    "Old Mining Shaft 4": "ridge_mine",
+    "Ranger Station Ruins": "ridge_loc_ruins",
+    "Overturned Railcar": "ridge_loc_railcar",
+    "Limestone Sinkhole": "ridge_loc_sinkhole",
+}
+
 MAP_ORDER = [
     "Fire-Tower 1", "The Northern Ravine", "The Copperhead Bridge",
     "The Compass Cabins", "Old Mining Shaft 4", "Ranger Station Ruins",
@@ -412,6 +424,9 @@ class RidgeMode:
             return "S"
         if self.F.get("rd_siege_night"):
             return "d"
+        # The display itself glitches at low sanity — wrong char, briefly
+        if self.sanity() < 45 and random.random() < 0.10:
+            return random.choice("8_-")
         if self._seg_override:
             return self._seg_override
         mode = s.menu or s.mode
@@ -576,6 +591,13 @@ class RidgeMode:
                 F[lie["flag"]] = True
             self.s.fx = "eerie"
             title = "LIVING WINDOW — PERCEPTION FRACTURE"
+            # Sometimes the lie shows you something that looks right at the glass
+            if random.random() < 0.30:
+                self.s.log.append("Something slams the pane. The glass is intact. It isn't.")
+                self.s.fx = "scare"
+                self._san(-4)
+                self._aware(6)
+                self._seg("d")
 
         choices = [{"label": "Lower the Binoculars", "effect": {"ridge": "hub"}}]
         if sanity < 50:
@@ -978,6 +1000,8 @@ class RidgeMode:
             F["rd_visited"].append(node)
         s.log.append(f"── EXPEDITION: {node.upper()} ──")
         s.menu = ""
+        # The center viewport travels: switch the scene to the destination NOW
+        s.scene = NODE_SCENE.get(node, "ridge_forest")
 
         # Character encounters — the world grows a cast around your behavior
         if node == "Ranger Station Ruins" and day >= 8 and not F.get("rd_elena_seen"):
@@ -989,7 +1013,7 @@ class RidgeMode:
                         "It finishes them CORRECTLY. Take me to your tower or give me something heavy.'"),
                        [{"label": "Take Her In (She Knows This)", "effect": {"ridge": "resolve", "res": "elena_take"}},
                         {"label": "Leave Her the Crowbar", "effect": {"ridge": "resolve", "res": "elena_leave"}}],
-                       "ridge_forest", "BACK", "event")
+                       NODE_SCENE.get(node, "ridge_forest"), "BACK", "event")
             self._seg("U")
             return
         if node == "Limestone Sinkhole" and F.get("rd_world", {}).get("we_clearing") and not F.get("rd_ash_met"):
@@ -999,7 +1023,7 @@ class RidgeMode:
                         "'I know the way out,' Ash says. 'It doesn't like me repeating things.'"),
                        [{"label": "Bring Ash to the Tower", "effect": {"ridge": "resolve", "res": "ash_take"}},
                         {"label": "Mark the Spot and Go", "effect": {"ridge": "resolve", "res": "ash_leave"}}],
-                       "ridge_forest", "BACK", "event")
+                       NODE_SCENE.get(node, "ridge_forest"), "BACK", "event")
             self._seg("U")
             return
 
@@ -1042,7 +1066,7 @@ class RidgeMode:
                         "pace exactly. By the time you reach the ladder your flashlight is dimming and your "
                         "hands won't stop shaking."),
                        [{"label": "Climb Back to the Cabin", "effect": {"ridge": "hub"}}],
-                       "ridge_forest", "BACK", "event")
+                       NODE_SCENE.get(node, "ridge_forest"), "BACK", "event")
             self._seg("S")
         else:
             found = random.choice(["rations", "battery cells", "scrap copper", "clean water"])
@@ -1051,13 +1075,19 @@ class RidgeMode:
                 s.player.food += amt
             elif found == "clean water":
                 s.player.water += amt
-            elif found == "battery cells":
-                s.player.scrap += amt
             else:
                 s.player.scrap += amt
             s.log.append(f"Quiet excursion. Salvaged {amt} {found}. The forest watched and said nothing.")
             self._san(2)
-            self.hub()
+            # Show the place itself before returning — the view IS the reward
+            sc = NODE_SCENE.get(node, "ridge_forest")
+            self._show(f"{node.upper()} — QUIET EXCURSION",
+                       (f"You work the site with the lantern low. Salvaged {amt} {found}.\n"
+                        "Somewhere behind the fog, a branch snaps in a three-beat rhythm and stops "
+                        "when you stop. The tower ladder is a straight line home."),
+                       [{"label": "Climb Back to the Tower", "effect": {"ridge": "hub"}}],
+                       sc, "BACK", "event")
+            self._seg("M")
 
     # ── Scripted beats ─────────────────────────────────────
 
@@ -1137,7 +1167,13 @@ class RidgeMode:
             F.setdefault("rd_docs", []).append("doc_01")
             s.log.append("◆ Document recovered: Log Entry #01 (Arthur Pendelton), desk drawer.")
         self._san(-4, "The drawer sticks. Inside: a headset with the foam torn off, and a log page.")
-        self.hub()
+        self._show("FIRE-TOWER 1 — THE DRAWER STICKS",
+                   ("The decommissioned cabin smells of cold ash. In the desk drawer: a headset with the "
+                    "foam torn off, and one log page in a hand that presses too hard. The service light "
+                    "above the southern window blinks once — then remembers it is dead."),
+                   [{"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
+                   NODE_SCENE["Fire-Tower 1"], "BACK", "event")
+        self._seg("M")
 
     async def _site_ruins(self):
         s, F = self.s, self.F
@@ -1146,7 +1182,13 @@ class RidgeMode:
             F.setdefault("rd_docs", []).append("cassette")
             s.log.append("◆ Document recovered: Cassette — Arthur's Dictation.")
         self._san(-6, "In the root cellar safe: a working tape recorder. Arthur's dog has been dead for forty years.")
-        self.hub()
+        self._show("RANGER STATION RUINS — THE CELLAR SAFE",
+                   ("Charred beams lean over a dry cellar. The safe behind the stone hearth is open — inside, "
+                    "a working tape recorder and three cassettes. On play: heavy breathing, a dog that died "
+                    "in Ohio forty years ago, and a voice asking you, politely, to open the latch just a crack."),
+                   [{"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
+                   NODE_SCENE["Ranger Station Ruins"], "BACK", "event")
+        self._seg("M")
 
     async def _site_railcar(self):
         s, F = self.s, self.F
@@ -1157,8 +1199,15 @@ class RidgeMode:
             if "skin_stitch" not in F.get("rd_docs", []):
                 F.setdefault("rd_docs", []).append("skin_stitch")
             s.log.append("◆ Documents recovered: 1991 Incident Report + Project Skin-Stitch Bio-Data.")
-            self._san(-4, "Black ice inside the railcar. The corporate lockbox was already open. The paperwork wasn't.")
-            self.hub()
+        self._san(-4, "Black ice inside the railcar. The corporate lockbox was already open. The paperwork wasn't.")
+        self._show("OVERTURNED RAILCAR — LOCKBOX 1974",
+                   ("The 1974 freight car lies on its side in the ravine floor, doors gaping. Black ice lines "
+                    "the interior. The corporate lockbox is open: 1991 incident files and a military logistics "
+                    "sheet stamped DARK — a non-human skeleton in the limestone, warm when recovered. "
+                    "The recovery vehicle refused to start for eleven hours."),
+                   [{"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
+                   NODE_SCENE["Overturned Railcar"], "BACK", "event")
+        self._seg("M")
 
     async def _site_sinkhole(self):
         s, F = self.s, self.F
@@ -1170,9 +1219,13 @@ class RidgeMode:
             if s.world.is_night:
                 self._san(-12, "From the bottom of the pit, three voices call for help. All three are your friends. All three are upstairs.")
                 self.s.fx = "eerie"
-                self.hub()
-            else:
-                self.hub()
+            self._show("LIMESTONE SINKHOLE — THE RIM",
+                       ("The pit breathes mist in slow pulses. Scavenging the rim: a military flare gun and three "
+                        "crimson flares. The cave network below connects to Shaft 4 — you can hear the dark "
+                        "arranging itself when you lean over."),
+                       [{"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
+                       NODE_SCENE["Limestone Sinkhole"], "BACK", "event")
+            self._seg("M")
 
     # ── resolution of beats (branching outcomes) ───────────
 
@@ -1379,6 +1432,16 @@ class RidgeMode:
         if not F.get("rd_cal"):
             self._san(-8, "You slept without syncing the barometers. The laptop flickers all night.")
             self._aware(10)
+
+        # The cabin itself misbehaves when Sanity frays
+        if self.sanity() < 40 and random.random() < 0.35:
+            s.log.append("── The buzzer sounds by itself. Three beats. Then nothing. ──")
+            await self.e.buzzer.danger()
+            self._san(-3)
+            s.fx = "static"
+        if self.sanity() < 30 and random.random() < 0.20:
+            s.log.append("── The lantern gutters. The terminal goes fully black for four seconds. ──")
+            s.fx = "scare"
 
         # Night siege check — driven by awareness
         awareness = s.player.humanity

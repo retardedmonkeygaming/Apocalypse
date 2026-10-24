@@ -343,9 +343,17 @@ function updateUI(state) {
   }
 
   if (window.SFX) {
-    SFX.play(state.fx);
-    if (isRidge && window.SFX.ridgeAmbience) {
-      SFX.ridgeAmbience(p.morale, !!w.is_night);
+    if (state.fx === "scare") {
+      // Screen dies, then the jumpscare — silence, stab, shake
+      SFX.play("");
+      jumpscareFx();
+    } else {
+      SFX.play(state.fx);
+    }
+    if (isRidge && window.SFX.ridgeTick) {
+      SFX.ridgeTick(state);
+    } else if (window.SFX.ridgeTick) {
+      SFX.ridgeTick(null); // stop horror layers outside ridge runs
     }
   }
 
@@ -384,6 +392,29 @@ function updateUI(state) {
       22
     );
   }
+}
+
+// Jumpscare: 300ms of dead black, then a violent flash + shake
+let _scaring = false;
+function jumpscareFx() {
+  if (_scaring) return;
+  _scaring = true;
+  const screen = document.getElementById("crt-screen");
+  const flash = document.getElementById("fx-flash");
+  if (window.SFX) SFX.jumpscare();
+  if (screen) screen.classList.add("blackout");
+  setTimeout(() => {
+    if (screen) {
+      screen.classList.remove("blackout");
+      screen.classList.add("scare-flash", "shake");
+    }
+    if (flash) flash.classList.add("scare");
+    setTimeout(() => {
+      if (screen) screen.classList.remove("scare-flash", "shake");
+      if (flash) flash.classList.remove("scare");
+      _scaring = false;
+    }, 420);
+  }, 320);
 }
 
 let _toastLastId = "";
