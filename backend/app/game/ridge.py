@@ -11,8 +11,8 @@ import random
 from typing import Any, Dict, List, Optional
 
 from backend.app.game.ridge_cast import (
-    FOCUS_SIGHTINGS, NEW_ENDINGS, WINDOW_LIES, WINDOW_TRUE, WORLD_EVENTS,
-    crew_line, merge_npcs,
+    CREW_LINES, FOCUS_SIGHTINGS, NEW_ENDINGS, WINDOW_LIES, WINDOW_TRUE,
+    WORLD_EVENTS, crew_line, merge_npcs,
 )
 
 RIDGE_ID = "dead_ridge"
@@ -327,12 +327,23 @@ class RidgeMode:
     def alive(self, who: str) -> bool:
         return bool(self.s.world.npcs.get(who, {}).get("alive"))
 
+    def _stress(self, who: str, amt: int):
+        """Companions carry their own weight of the campaign."""
+        st = self.F.setdefault("rd_stress", {})
+        st[who] = max(0, min(100, int(st.get(who, 0)) + amt))
+
+    def _stress_all(self, amt: int):
+        for who in ("mark", "chloe", "sam", "elena", "ash", "cole"):
+            if self.alive(who):
+                self._stress(who, amt)
+
     def _kill(self, who: str):
         npc = self.s.world.npcs.get(who)
         if npc:
             npc["alive"] = False
             npc["at_base"] = False
             self.s.log.append(f"† {npc['short']} is gone. The ridge keeps its own.")
+            self._stress_all(10)
 
     # ── boot ────────────────────────────────────────────────
 
@@ -364,6 +375,9 @@ class RidgeMode:
             "rd_world": {},             # world-evolution flags applied so far
             "rd_elena_met": False, "rd_ash_met": False, "rd_cole_met": False,
             "rd_ash_safe": False, "rd_voss_tape": False, "rd_cole_tested": False,
+            # Sandbox economy & companion psychology
+            "rd_actions": 2,            # daylight actions remaining (expeditions cost 1)
+            "rd_stress": {},            # per-companion stress, independent of group sanity
         })
         s.log = [
             "FORESTOS v4.2 booting... amber phosphor warm. Radio cold.",
@@ -390,7 +404,7 @@ class RidgeMode:
     # ── main hub (the cabin) ───────────────────────────────
 
     def hub(self, _e=None):
-        s = self.s
+        s, F = self.s, self.F
         s.world.location = "Fire-Tower 2"
         s.menu = "ridge"
         s.mode = "hub"
@@ -398,7 +412,7 @@ class RidgeMode:
         sanity = s.player.morale
         text = (
             f"DAY {s.world.day}/30 · {clock} · SANITY {sanity} · AWARENESS {s.player.humanity}\n"
-            f"TOWER SEAL {s.world.fortification}/10 · LOGS SUBMITTED {self.F.get('rd_logs', 0)}\n"
+            f"DAYLIGHT ACTIONS: {F.get('rd_actions', 2)}/2 · TOWER SEAL {s.world.fortification}/10 · LOGS {F.get('rd_logs', 0)}\n"
             f"BARO SYNC: {'CALIBRATED' if self.F.get('rd_cal') else 'DUE'} · "
             f"Mark chews a thumbnail. Chloe counts rations. Sam keeps the lens cap off.\n"
             "Below the catwalk, the pines move when the wind doesn't."
@@ -589,6 +603,7 @@ class RidgeMode:
             self._aware(lie.get("aware", 4), lie["text"])
             if lie.get("flag"):
                 F[lie["flag"]] = True
+            self._stress_all(2)
             self.s.fx = "eerie"
             title = "LIVING WINDOW — PERCEPTION FRACTURE"
             # Sometimes the lie shows you something that looks right at the glass
@@ -612,12 +627,17 @@ class RidgeMode:
         party = [p for p in s.world.npcs.values()
                  if p.get("alive") and p.get("at_base") and p.get("id") in ("mark", "chloe", "sam", "elena", "ash", "cole")]
         recent = F.get("rd_recent", {})
-        sanity = self.sanity()
+        stress_map = F.get("rd_stress", {})
         lines, choices = [], []
         for p in party:
-            ln = crew_line(p["id"], sanity, recent)
+            # Companions have their own pressure: stress bends their band
+            effective = self.sanity() - int(stress_map.get(p["id"], 0))
+            ln = crew_line(p["id"], effective, recent)
             if ln:
-                lines.append(f"{p['short']}: \"{ln['line']}\"")
+                stress_note = ""
+                if int(stress_map.get(p["id"], 0)) >= 70:
+                    stress_note = "  (Their hands won't stop shaking. They keep talking anyway.)"
+                lines.append(f"{p['short']}: \"{ln['line']}\"{stress_note}")
                 choices.append({"label": f"Ask {p['short']}", "effect": {"ridge": "talk_crew", "who": p["id"]}})
             if len(lines) >= 3:
                 break
@@ -632,10 +652,13 @@ class RidgeMode:
         s, F = self.s, self.F
         who = e.get("who", "mark")
         recent = F.get("rd_recent", {})
-        ln = crew_line(who, self.sanity(), recent)
+        effective = self.sanity() - int(F.get("rd_stress", {}).get(who, 0))
+        ln = crew_line(who, effective, recent)
         F["rd_recent"] = recent
         npc = s.world.npcs.get(who, {"short": who})
         text = f"{npc.get('short', who).upper()}: \"{ln['line']}\"" if ln else f"{npc.get('short', who)} says nothing."
+        if int(F.get("rd_stress", {}).get(who, 0)) >= 70:
+            text += "\n\n(Their hands won't stop shaking. They keep talking anyway.)"
         # Talking aloud teaches the ridge: it learns fastest from its favorites
         self._learn(2, "The ridge listens to every word. It keeps them.") if who in ("ash", "cole") else self._learn(1)
         if self.sanity() < 40 and random.random() < 0.35:
@@ -823,6 +846,7 @@ class RidgeMode:
         else:
             s.log.append(f"── SYNC FAILED (Δ{dev}mb). The speakers blast shortwave static. ──")
             self._san(-15, "-15 SANITY. The voices on the band count your breaths.")
+            self._stress_all(3)
             self._aware(15, "AWARENESS SPIKES. Something heavy settles onto the glass catwalk.")
             s.fx = "static"
             await self.e.buzzer.danger()
@@ -898,6 +922,28 @@ class RidgeMode:
         learn_hit = 3 if ch == 88 else 2
         self._learn(learn_hit)
 
+        # Channel 104 is mud without the frequency chart (Tower 1 / decrypt)
+        if ch == 104 and "freq_chart" not in F.get("rd_docs", []) and day < 12:
+            self._san(-2, "Channel 104 is locked in mud — you need the frequency chart to hear it.")
+            self.hub()
+            return
+
+        # THE PALE VOICE / ARTHUR'S MASK — early echoes before full hijacks
+        if (F.get("rd_learn", 0) >= 30 or day >= 22) and not F.get(f"rd_hijack_{ch}") and random.random() < 0.22:
+            band = random.choice(CREW_LINES["pale"]["mid"])
+            self._san(-8, "Something old clears its throat on the band — it wears Arthur Pendelton's cadence.")
+            self._aware(6)
+            self._show(f"CHANNEL {ch} — ARTHUR'S ECHO",
+                       (f"Static thins into a calm, tired, familiar voice — the ranger from the photos, the "
+                        f"logs, the missing-man file. \"It's Day 13 up here. I haven't slept in ninety hours.\" "
+                        f"A pause. Then, softly: \"{band}\"\n\nIt is waiting for a reply. It always waits."),
+                       [{"label": "Answer It", "effect": {"ridge": "resolve", "res": "answered", "ch": ch}},
+                        {"label": "Silence the Band", "effect": {"ridge": "resolve", "res": "silent", "ch": ch}}],
+                       "ridge_radio", "BACK", "event")
+            self.s.fx = "eerie"
+            self._seg("d")
+            return
+
         # HIJACK: once it has learned enough voices it owns the channel.
         # The first hijack is guaranteed; later ones are probabilistic.
         hijacked_any = any(F.get(k) for k in F if str(k).startswith("rd_hijack_"))
@@ -968,6 +1014,15 @@ class RidgeMode:
     async def expedition(self, _e=None):
         s, F = self.s, self.F
         s.menu = "ridge_map"
+        if int(F.get("rd_actions", 2)) <= 0:
+            self._show("NO LIGHT LEFT — THE TREELINE OWNS THIS HOUR",
+                       ("The sun is a rumor behind the western ridge. Anything you leave for now, you leave "
+                        "for the night shift — and the night shift doesn't work for you. Rest, or spend the "
+                        "tower hours. The nodes will still be there. Changed, maybe."),
+                       [{"label": "Back to the Desk", "effect": {"ridge": "hub"}}],
+                       "ridge_tower", "BACK", "event")
+            self._seg("n")
+            return
         F["rd_mappage"] = int(F.get("rd_mappage", 0))
         pages = max(1, (len(MAP_ORDER) + 3) // 4)
         page = F["rd_mappage"] % pages
@@ -995,11 +1050,23 @@ class RidgeMode:
         s, F = self.s, self.F
         node = e.get("node", "")
         day = s.world.day
+        scripted = (
+            (node == "The Copperhead Bridge" and day == 5 and not F.get("rd_bridge_done"))
+            or (node == "Old Mining Shaft 4" and day >= 21 and not F.get("rd_mine_done"))
+            or (node == "The Compass Cabins" and day in (14, 15, 16) and not F.get("rd_cabins_done"))
+            or (node == "The Compass Cabins" and day == 24 and not F.get("rd_sensor_done"))
+        )
+        if int(F.get("rd_actions", 2)) <= 0 and not scripted:
+            # No daylight left — the treeline owns this hour
+            self.hub()
+            return
         s.world.location = node
         if node not in F.get("rd_visited", []):
             F["rd_visited"].append(node)
         s.log.append(f"── EXPEDITION: {node.upper()} ──")
         s.menu = ""
+        # Daylight is a budget: each excursion burns one action
+        F["rd_actions"] = max(0, int(F.get("rd_actions", 2)) - 1)
         # The center viewport travels: switch the scene to the destination NOW
         s.scene = NODE_SCENE.get(node, "ridge_forest")
 
@@ -1375,6 +1442,7 @@ class RidgeMode:
         elif r == "answered":
             # You validated its placement in the environment
             self._learn(22, "It has your answer now. Your cadence. Your agreement.")
+            self._stress_all(6)
             self._san(-20, "The channel clears. Nothing on it but your own breathing, slightly ahead of your lungs.")
             self._aware(15)
             F["rd_answered_the_ridge"] = True
@@ -1471,6 +1539,7 @@ class RidgeMode:
             breach = 10 + random.randint(5, 15)
             self._damage_tower(1, f"Claws find the window frame. The cabin shudders ({breach}s).")
             self._san(-breach // 2)
+            self._stress_all(5)
             s.fx = "shake"
             await self.e.buzzer.danger()
             if F.get("rd_hatch_sealed") and s.world.fortification <= 0:
@@ -1525,6 +1594,9 @@ class RidgeMode:
         s.world.is_night = False
         F["rd_cal"] = False
         F["rd_siege_night"] = 0
+        F["rd_actions"] = 2
+        # Companions shed a little stress with the light
+        self._stress_all(-3)
 
         # Rations
         party = sum(1 for n in s.world.npcs.values() if n.get("alive") and n.get("at_base"))
