@@ -554,6 +554,266 @@ EVENTS: List[Dict[str, Any]] = [
         locations=["Home Base"],
         night=True,
     ),
+
+    # ─────────────────────────────────────────────────────────────
+    # EXPANDED CITY — NEW LOCATION ENCOUNTERS
+    # ─────────────────────────────────────────────────────────────
+
+    # ── FIRE STATION ──
+    _e(
+        "firestation_engine",
+        "ENGINE COMPANY 12",
+        "Soot crawls up the bay walls past a pumper truck still idling on a half tank. "
+        "Turnout gear lies scattered where firefighters stepped out of it and never came back. "
+        "The equipment lockers rattle in the draft — or something else.",
+        [
+            _c("Strip the tool wall", "red", scrap=4, risk=0.2, log="Halligan bars, bolt cutters, and rope — all yours."),
+            _c("Check the medical lockers", "blue", medkits=2, add_item="clean_gauze", risk=0.15),
+            _c("Siphon the pumper's diesel", "green", add_item="molotov", scrap=1, risk=0.3),
+            _c("Sound the alarm and slip away", "yellow", morale=4, risk=0.1, log="The bell roars behind you, drawing every shambler on the block."),
+        ],
+        scene="firestation",
+        locations=["Fire Station"],
+    ),
+    _e(
+        "firestation_rescue_ladder",
+        "THE LADDER COMPANY",
+        "On the training tower, a rescue dummy hangs half-buried in tarps — then it convulses. "
+        "A real voice cracks from the roof hatch: 'Hey! HEY! I've been up here four days!'",
+        [
+            _c("Lower the aerial ladder", "red", humanity=10, npc_join="marcus", flags={"met_marcus": True}, gemini=True),
+            _c("Toss up supplies first", "blue", food=-2, water=-1, humanity=8, add_item="radio_parts", flags={"met_marcus": True}),
+            _c("Leave — voices carry", "green", humanity=-6, morale=-4, log="You leave the firefighter to his water and his prayers."),
+            _c("Clear the tower first", "yellow", combat="runner", flags={"rescue_cleared": True}),
+        ],
+        scene="firestation",
+        unique=True,
+        story=True,
+        locations=["Fire Station"],
+        min_day=2,
+    ),
+
+    # ── CITY PRISON ──
+    _e(
+        "prison_block",
+        "CELLBLOCK SILENCE",
+        "The sally port hangs open by a hand's width. Inside, bunks are stripped, lockers looted — "
+        "but the evidence cage still glitters: contraband seized on the last day of the old world.",
+        [
+            _c("Cut the evidence cage", "red", ammo=6, scrap=3, add_item="wire_cutters", risk=0.35),
+            _c("Raid the armory locker", "blue", ammo=8, add_item="pistol", risk=0.45),
+            _c("Free what's left in holding", "green", humanity=12, combat="shambler", flags={"held_survivors": True}),
+            _c("Stay out of the dark wing", "yellow", log="Some doors were sealed with welded chain for a reason."),
+        ],
+        scene="prison",
+        locations=["City Prison"],
+    ),
+    _e(
+        "prison_warden_keys",
+        "THE WARDEN'S DESK",
+        "Behind cracked glass in the admin wing, a desk drawer holds the prison key ring, "
+        "a rotting lunch, and a hand-written manifest naming every inmate moved the night everything fell.",
+        [
+            _c("Take the key ring", "red", discover="Subway Tunnels", add_item="tunnel_key", log="Maintenance keys. The transit tunnels were never on the public maps."),
+            _c("Read the manifest", "blue", morale=5, humanity=4, gemini=True),
+            _c("Take the lunch and go", "green", food=2, morale=2),
+            _c("Leave it for whoever comes next", "yellow", humanity=3, log="You close the drawer gently, like a headstone."),
+        ],
+        scene="prison",
+        unique=True,
+        story=True,
+        locations=["City Prison"],
+        min_day=3,
+    ),
+
+    # ── BUS DEPOT ──
+    _e(
+        "bus_depot_fuel",
+        "ROUTE 14 TERMINAL",
+        "Fifty diesel buses sit in numbered lanes under skeletal floodlights. "
+        "The depot fuel farm hisses softly — the pumps still run on the yard's generator.",
+        [
+            _c("Fill every can you carry", "red", scrap=2, add_item="molotov", water=2, risk=0.25),
+            _c("Strip tires for rubber & scrap", "blue", scrap=4, risk=0.2),
+            _c("Sleep in a climate-controlled bus", "green", health=15, morale=8),
+            _c("Hotwire the depot shuttle", "yellow", discover="Waterworks", discover2="Memorial Stadium", log="You kick the shuttle awake and burn its last fumes across town."),
+        ],
+        scene="busdepot",
+        locations=["Bus Depot"],
+    ),
+    _e(
+        "bus_depot_passengers",
+        "THE PASSENGERS",
+        "Every bus driver is still at their wheel, seatbelts fastened, facing forward. "
+        "Someone tucked notes into their hands. Someone wanted them found that way.",
+        [
+            _c("Read the farewell notes", "red", morale=-4, humanity=8, gemini=True),
+            _c("Say a few words", "blue", morale=4, humanity=10),
+            _c("Search their lockers instead", "green", food=2, ammo=3, risk=0.15),
+            _c("Move on — this is not yours", "yellow", log="You pull the depot doors shut behind you."),
+        ],
+        scene="busdepot",
+        unique=True,
+        story=True,
+        locations=["Bus Depot"],
+        min_day=2,
+    ),
+
+    # ── WATERWORKS ──
+    _e(
+        "waterworks_pump",
+        "DEADHEAD PUMP STATION",
+        "Turbines the size of houses thrum behind chain-link. The municipal water still runs — "
+        "nobody has turned the valves since the crews vanished. A pressure gauge blinks green: SAFE.",
+        [
+            _c("Fill everything & share the surplus", "red", water=5, morale=6, humanity=4),
+            _c("Harvest brass fittings", "blue", scrap=4, water=2, risk=0.2),
+            _c("Chlorinate & bottle for trade", "green", water=3, flags={"water_trade": True}, log="Clean water becomes the loudest voice in any room."),
+            _c("Dive the intake channel", "yellow", combat="bloater", add_item="gas_mask"),
+        ],
+        scene="waterworks",
+        locations=["Waterworks"],
+    ),
+
+    # ── OVERPASS CAMP ──
+    _e(
+        "overpass_camp",
+        "TARP CITY",
+        "Beneath the elevated freeway, a shantytown of tarps and shopping carts sways in the draft. "
+        "Cooking smoke rises through the concrete ribs. Thirty survivors, one hand-pumped well, no walls.",
+        [
+            _c("Trade scrap for their stories", "red", scrap=-2, morale=6, humanity=6, flags={"overpass_allies": True}, gemini=True),
+            _c("Share a meal with strangers", "blue", food=-2, humanity=10, morale=8, flags={"overpass_allies": True}),
+            _c("Warn them about the night lanes", "green", humanity=5, discover="Waterworks", flags={"overpass_warned": True}),
+            _c("Rob the camp blind", "yellow", food=3, ammo=4, humanity=-18, combat="scavenger_raider"),
+        ],
+        scene="overpass",
+        locations=["Overpass Camp"],
+    ),
+    _e(
+        "overpass_vote",
+        "THE CAMP VOTE",
+        "The camp elder finds you by the well: 'They want to move into the old prison — walls, gates, no more tents. "
+        "But you've seen what walks those corridors. We're voting. You get a vote too.'",
+        [
+            _c("Vote for the prison walls", "red", morale=8, humanity=4, flags={"camp_prison": True}),
+            _c("Vote to stay mobile", "blue", morale=5, humanity=6, flags={"camp_stay": True}),
+            _c("Offer your base as shelter", "green", food=-2, water=-2, humanity=14, npc_join="miriam", flags={"camp_refuge": True}),
+            _c("Refuse the ballot", "yellow", morale=-2, log="You are still your own nation."),
+        ],
+        scene="overpass",
+        unique=True,
+        story=True,
+        locations=["Overpass Camp"],
+        min_day=4,
+    ),
+
+    # ── MEMORIAL STADIUM ──
+    _e(
+        "stadium_fema",
+        "FIELD OF TENTS",
+        "FEMA tents ripple across the stadium field under a scoreboard flashing RED in an endless loop. "
+        "Medical tents first: most are stripped, but one quarantine pavilion still has a sealed supply pallet.",
+        [
+            _c("Crack the supply pallet", "red", medkits=3, add_item="antibiotics", risk=0.4),
+            _c("Search the locker rooms", "blue", food=3, water=3, add_item="clean_gauze", risk=0.3),
+            _c("Climb the press box", "green", discover="Fire Station", discover2="City Prison", morale=4),
+            _c("Sprint the fifty-yard line", "yellow", combat="stalker", log="Your boots drum the turf as something fast uncovers itself from the visitor tunnel."),
+        ],
+        scene="stadium",
+        locations=["Memorial Stadium"],
+    ),
+    _e(
+        "stadium_ghost_game",
+        "THE GHOST GAME",
+        "The jumbotron flickers to life — someone on the grid is powering the stadium board. "
+        "A scoreboard reads HOME 07 : AWAY 07 with 00:04 on the clock, and the crowd noise loops on a scratched tape.",
+        [
+            _c("Answer the board — raise your arms", "red", morale=14, humanity=6, gemini=True, flags={"ghost_game": True}),
+            _c("Kill the generator", "blue", scrap=2, morale=-3, log="The lights die. Somewhere in the stands, something complains."),
+            _c("Search while the lights burn", "green", ammo=5, food=2, risk=0.3),
+            _c("Leave the stadium dark", "yellow", log="You slip out beneath the scoreboard's dying glow."),
+        ],
+        scene="stadium",
+        unique=True,
+        story=True,
+        locations=["Memorial Stadium"],
+        night=True,
+    ),
+
+    # ── ADDITIONAL URBAN VARIETY ──
+    _e(
+        "streets_quiet_theater",
+        "THE LAST SHOWING",
+        "A single-screen cinema still glows — the projection booth runs on a car battery rig. "
+        "On screen, a film from before the fall plays to an audience of dust and one sleeping dog.",
+        [
+            _c("Watch the whole reel", "red", morale=10, humanity=5, gemini=True),
+            _c("Take the battery rig", "blue", scrap=3, morale=-4, humanity=-4, log="The screen dies mid-scene. The dog follows you out."),
+            _c("Scavenge the concession stand", "green", food=3, water=2, risk=0.15),
+            _c("Check the alley fire escape", "yellow", ammo=3, risk=0.3),
+        ],
+        scene="streets",
+        locations=["Streets", "Overpass Camp"],
+    ),
+    _e(
+        "streets_kitchen_ghost",
+        "BURNER STILL ON",
+        "A restaurant kitchen left mid-service: pots reduced to tar on dead burners, tickets curled in the rail. "
+        "Somewhere in the walk-in freezer, metal groans under slow weight.",
+        [
+            _c("Bolt the freezer door shut", "red", morale=3, humanity=4, risk=0.1),
+            _c("Whatever's inside — strike first", "blue", combat="bloater"),
+            _c("Salvage the dry stores", "green", food=4, risk=0.2),
+            _c("Back out through the dining room", "yellow", log="You weave between tables set for people who never sat down."),
+        ],
+        scene="streets",
+        locations=["Streets", "Bus Depot", "Fire Station"],
+        night=None,
+    ),
+    _e(
+        "base_radio_dreams",
+        "DEAD AIR DREAMS",
+        "Sleep comes hard. The radio filters through the static with a music box melody, "
+        "and a voice underneath counts the days wrong: 'Day one. Day one. Day one...'",
+        [
+            _c("Record the melody", "red", morale=6, humanity=4, flags={"dream_melody": True}, gemini=True),
+            _c("Rip the batteries out", "blue", morale=-3, scrap=1, log="Silence is its own kind of noise."),
+            _c("Answer the count aloud", "green", morale=4, humanity=6, infection=3, flags={"answered_count": True}),
+            _c("Pull the blanket over your head", "yellow", morale=-2, health=4),
+        ],
+        scene="base",
+        locations=["Home Base"],
+        night=True,
+    ),
+    _e(
+        "park_foraging_circle",
+        "THE FORAGING CIRCLE",
+        "Neat rows of painted soup cans mark a community garden someone keeps by moonlight. "
+        "A note is weighted with a stone: 'TAKE WHAT YOU NEED. LEAVE WHAT YOU CAN. — THE GREEN THUMB CLUB'",
+        [
+            _c("Take a little, leave scrap", "red", food=3, water=1, scrap=-1, humanity=6),
+            _c("Take everything", "blue", food=6, humanity=-12, flags={"raided_garden": True}),
+            _c("Leave a full meal tin", "green", food=-1, humanity=8, morale=6, flags={"left_gift": True}),
+            _c("Wait and watch the gardener", "yellow", morale=4, risk=0.1, log="No one comes. You leave before the guilt does."),
+        ],
+        scene="park",
+        locations=["Overgrown Park", "Overpass Camp"],
+    ),
+    _e(
+        "subway_ghost_train",
+        "GHOST TRAIN",
+        "Headlights bloom in the black tunnel — a train nobody drives rolls through the station, "
+        "doors open, interior lights swaying. Its brake screech sounds almost like a voice.",
+        [
+            _c("Board the moving train", "red", discover="Docks", morale=6, risk=0.35, log="It carries you three stops and dies mid-tunnel. You walk the rest."),
+            _c("Raid the luggage racks", "blue", food=2, scrap=3, ammo=3, risk=0.3),
+            _c("Wave as it passes", "green", morale=8, humanity=4, gemini=True),
+            _c("Stay in the shadows", "yellow", risk=0.05, log="You press into the alcove and let the dead iron sing past."),
+        ],
+        scene="subway",
+        locations=["Subway Tunnels", "Bus Depot"],
+    ),
 ]
 
 

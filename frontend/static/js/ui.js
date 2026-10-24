@@ -57,6 +57,7 @@ const ITEM_NAMES = {
   dog_treat: "Jerky Tin",
   halcyon_leaflet: "Halcyon Leaflet",
   wire_cutters: "Wire Cutters",
+  spear: "Rebar Spear",
 };
 
 // ── Typewriter Effect ─────────────────────────────────────────────────────────
@@ -74,7 +75,8 @@ function typewriterText(el, text, eventId, speedMs) {
   if (_tw.timer) { clearInterval(_tw.timer); _tw.timer = null; }
   el.textContent = "";
   let i = 0;
-  const speed = speedMs || 16;
+  // Cap the full reveal at ~1.5s so long events never feel like a loading gate.
+  const speed = Math.max(3, Math.min(speedMs || 16, Math.ceil(1500 / Math.max(1, text.length))));
   _tw.timer = setInterval(() => {
     if (i >= text.length) { clearInterval(_tw.timer); _tw.timer = null; return; }
     el.textContent += text[i];

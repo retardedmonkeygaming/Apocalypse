@@ -1,6 +1,7 @@
 import asyncio
 import os
 from pathlib import Path
+from typing import Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,6 +19,11 @@ set_engine(engine)
 engine.set_broadcast(manager.broadcast)
 button_mgr = ButtonManager()
 
+# gpiozero fires button callbacks on its own thread, where there is no running
+# asyncio loop. We capture the server loop at startup and marshal callbacks
+# onto it with run_coroutine_threadsafe instead of asyncio.create_task.
+_main_loop: Optional[asyncio.AbstractEventLoop] = None
+
 
 def _make_handler(key: str):
     async def handler():
@@ -29,8 +35,21 @@ def _make_handler(key: str):
     return handler
 
 
+def _dispatch(key: str):
+    """Schedule a button press on the server event loop from any thread."""
+    coro = _make_handler(key)()
+    if _main_loop and _main_loop.is_running():
+        asyncio.run_coroutine_threadsafe(coro, _main_loop)
+    else:
+        # Fallback for contexts already inside the loop (tests / software mode)
+        try:
+            asyncio.get_running_loop().create_task(coro)
+        except RuntimeError:
+            pass
+
+
 def _wire_button(name: str, key: str):
-    button_mgr.on(name, lambda k=key: asyncio.create_task(_make_handler(k)()))
+    button_mgr.on(name, lambda k=key: _dispatch(k))
 
 
 _wire_button("red", "red")
@@ -42,6 +61,8 @@ _wire_button("confirm", "confirm")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _main_loop
+    _main_loop = asyncio.get_running_loop()
     engine.set_broadcast(manager.broadcast)
     engine.display.show_health(engine.state.player.health)
 
@@ -89,6 +110,12 @@ async def health():
     return {"ok": True, "hardware": settings.use_hardware, "gemini": engine.gemini.enabled}
 
 
+@app.get("/api/state")
+async def api_state():
+    """Instant first paint — the page renders from this before the WebSocket connects."""
+    return engine.state.to_dict()
+
+
 @app.get("/api/config")
 async def api_config():
     """Debug endpoint — returns resolved settings (safe subset, no secrets)."""
@@ -111,8 +138,10 @@ async def api_config():
 if __name__ == "__main__":
     import uvicorn
 
+    # Pass the app object directly — a string import would re-execute this
+    # module and re-initialize all GPIO hardware a second time.
     uvicorn.run(
-        "backend.app.main:app",
+        app,
         host=settings.host,
         port=settings.port,
         reload=False,

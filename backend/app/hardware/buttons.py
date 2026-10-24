@@ -2,23 +2,43 @@ from typing import Callable, Optional, Dict
 from backend.app.core.config import settings
 
 
-class ButtonManager:
-    """
-    Hardware Arcade Button manager via gpiozero.
-    5 arcade pushbuttons: Red, Blue, Green, Yellow, Confirm.
-    Configured with pull_up=True (active low) and 0.1s bounce time.
-    Supports software triggering for dual hardware/WebUI mirroring.
-    """
+_INSTANCE = None
 
-    def __init__(self):
-        self.callbacks: Dict[str, Optional[Callable]] = {
+
+def _shared() -> "ButtonManager":
+    """Return the single shared ButtonManager instance.
+
+    Prevents double GPIO claims when the app module gets imported twice
+    (e.g. `python -m backend.app.main` plus uvicorn's string import).
+    """
+    global _INSTANCE
+    if _INSTANCE is None:
+        _INSTANCE = object.__new__(ButtonManager)
+        _INSTANCE.callbacks = {
             "red": None,
             "blue": None,
             "green": None,
             "yellow": None,
             "confirm": None,
         }
-        self._buttons: Dict[str, Optional[object]] = {}
+        _INSTANCE._buttons = {}
+        _INSTANCE._init_hw()
+    return _INSTANCE
+
+
+class ButtonManager:
+    """
+    Hardware Arcade Button manager via gpiozero.
+    5 arcade pushbuttons: Red, Blue, Green, Yellow, Confirm.
+    Configured with pull_up=True (active low) and 0.1s bounce time.
+    Supports software triggering for dual hardware/WebUI mirroring.
+    Instantiation returns the shared singleton (see _shared).
+    """
+
+    def __new__(cls):
+        return _shared()
+
+    def _init_hw(self):
         if settings.use_hardware:
             try:
                 from gpiozero import Button

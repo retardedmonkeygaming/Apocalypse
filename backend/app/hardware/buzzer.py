@@ -3,15 +3,35 @@ from typing import Optional
 from backend.app.core.config import settings
 
 
+_INSTANCE = None
+
+
+def _shared() -> "Buzzer":
+    """Return the single shared buzzer instance.
+
+    Prevents double GPIO claims when the app module gets imported twice
+    (e.g. `python -m backend.app.main` plus uvicorn's string import).
+    """
+    global _INSTANCE
+    if _INSTANCE is None:
+        _INSTANCE = object.__new__(Buzzer)
+        _INSTANCE.device = None
+        _INSTANCE._init_hw()
+    return _INSTANCE
+
+
 class Buzzer:
     """
     Hardware passive buzzer controller via gpiozero PWMOutputDevice.
     Generates chiptune melodies, alarms, and audio feedback for the physical arcade cabinet.
     Silently acts as a no-op if hardware is disabled or unavailable.
+    Instantiation returns the shared singleton (see _shared).
     """
 
-    def __init__(self):
-        self.device = None
+    def __new__(cls):
+        return _shared()
+
+    def _init_hw(self):
         if settings.use_hardware:
             try:
                 from gpiozero import PWMOutputDevice

@@ -8,8 +8,11 @@ class GameSocket {
     this.url = url;
     this.ws = null;
     this.handlers = {};
-    this.reconnectDelay = 1200;
+    this.reconnectDelay = 800;
     this.pingInterval = null;
+    // Actions pressed while the socket is down are buffered, not lost —
+    // they flush the moment the connection reopens.
+    this.outbox = [];
   }
 
   connect() {
@@ -23,6 +26,11 @@ class GameSocket {
           statusEl.textContent = "CONNECTED";
           statusEl.classList.remove("error");
         }
+        // Flush any inputs pressed while disconnected
+        const queued = this.outbox.splice(0);
+        queued.forEach((payload) => {
+          try { this.ws.send(payload); } catch (e) { /* requeue on failure */ this.outbox.push(payload); }
+        });
         // Start ping interval
         if (this.pingInterval) clearInterval(this.pingInterval);
         this.pingInterval = setInterval(() => {
@@ -65,8 +73,13 @@ class GameSocket {
   }
 
   send(obj) {
+    const payload = JSON.stringify(obj);
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(obj));
+      this.ws.send(payload);
+    } else {
+      // Buffer instead of silently dropping — keeps play responsive
+      // during reconnects instead of forcing a page refresh.
+      if (this.outbox.length < 30) this.outbox.push(payload);
     }
   }
 
