@@ -8,8 +8,6 @@ from backend.app.game.content import (
     LOCATIONS,
     NPC_TEMPLATES,
     RECIPES,
-    SCENARIOS,
-    SCENARIO_ORDER,
     WEAPONS,
     WEATHERS,
     KID_NAMES,
@@ -67,64 +65,15 @@ class GameEngine:
         self.state.world.npcs["kid"]["short"] = kid
         self.state.world.weather = random.choice(["clear", "overcast", "clear"])
         self.state.log = [
-            "Channel 7 hums through the static: four survivor files just crossed the wire.",
-            f"Day 1. Weather: {self.state.world.weather.upper()}. Choose the life you already lived.",
+            "You awaken behind reinforced plywood in the boarded apartment.",
+            "Outside, the city hums with rain, rust, and the relentless dead.",
+            f"Day 1. Weather: {self.state.world.weather.upper()}. Channel 7 is on the air.",
         ]
-        # New runs open on story selection — pick a scenario with buttons 1-4.
-        self._scenario_menu()
+        self._hub_menu()
         self.display.show_health(self.state.player.health)
         await self.buzzer.success()
         self.state.save()
         await self.broadcast()
-
-    # ─────────────────────────────────────────────────────────────
-    # STORY SCENARIOS
-    # ─────────────────────────────────────────────────────────────
-
-    def _scenario_menu(self):
-        s = self.state
-        s.menu = "scenario"
-        lines = [
-            "Four survivor files slide across the desk. Each is a different way to have lived this long.",
-            "Pick your story — or let CONFIRM take the classic tale.",
-            "",
-        ]
-        for i, sid in enumerate(SCENARIO_ORDER):
-            scn = SCENARIOS[sid]
-            lines.append(f"{i + 1}. {scn['name']} — {scn['tag']}")
-        choices = [
-            {"label": SCENARIOS[sid]["name"], "effect": {"scenario": sid}}
-            for sid in SCENARIO_ORDER
-        ]
-        self._show("CHOOSE YOUR STORY", "\n".join(lines), choices, "base", "menu", "CLASSIC")
-        self.display.show("S")
-
-    async def _apply_scenario(self, sid: str):
-        scn = SCENARIOS.get(sid, SCENARIOS["apartment"])
-        s = self.state
-        s.scenario = sid
-        p, w = s.player, s.world
-
-        for k, v in (scn.get("player") or {}).items():
-            if hasattr(p, k):
-                setattr(p, k, v)
-        if scn.get("weapon"):
-            p.weapon = scn["weapon"]
-        for item in scn.get("inventory") or []:
-            if item not in p.inventory:
-                p.inventory.append(item)
-        if scn.get("fort") is not None:
-            w.fortification = scn["fort"]
-        for loc in scn.get("known") or []:
-            self._discover(loc)
-
-        s.log.append(f"▶ SCENARIO: {scn['name']} — {scn['tag']}")
-        for line in scn.get("log") or []:
-            s.log.append(line)
-
-        s.clamp()
-        self._hub_menu()
-        self.display.show_health(p.health)
 
     # ─────────────────────────────────────────────────────────────
     # MENUS & HUBS
@@ -176,31 +125,27 @@ class GameEngine:
         self.display.show("H" if not s.world.is_night else "n")
 
     def _location_menu(self):
+        known = [n for n in self.state.world.known_locations if n != "Home Base"]
+        if not known:
+            known = ["Streets"]
+
         # Progressively discover new sites as days advance
         day = self.state.world.day
         if day >= 2:
             for extra in ("Warehouse", "Church", "Radio Tower", "Subway Tunnels", "Gas Station"):
                 self._discover(extra)
-        if day >= 3:
-            for extra in ("Fire Station", "Bus Depot", "Overpass Camp"):
-                self._discover(extra)
         if day >= 5:
             for extra in ("Military Checkpoint", "School", "Docks", "Overgrown Park", "Ruined Pharmacy"):
                 self._discover(extra)
-        if day >= 7:
-            for extra in ("City Prison", "Waterworks", "Memorial Stadium"):
-                self._discover(extra)
 
         known = [n for n in self.state.world.known_locations if n != "Home Base"]
-        if not known:
-            known = ["Streets"]
 
-        # Page through the map 4 sites at a time; each open advances a page
-        # so every discovered coordinate stays reachable within a few opens.
-        pages = max(1, (len(known) + 3) // 4)
-        page = self.state.world.loc_page % pages
-        shown = known[page * 4 : page * 4 + 4]
-        self.state.world.loc_page = (page + 1) % pages
+        # Show up to 4 locations per menu slice
+        if len(known) > 4:
+            offset = (day + (2 if self.state.world.is_night else 0)) % len(known)
+            shown = (known + known)[offset : offset + 4]
+        else:
+            shown = known[:4]
 
         choices = []
         for name in shown:
@@ -208,10 +153,7 @@ class GameEngine:
             choices.append({"label": f"{name} ({risk_pct}% risk)", "effect": {"expedition": name}})
 
         self.state.menu = "locations"
-        blurb = (
-            f"City map page {page + 1}/{pages} · {len(known)} coordinates charted. "
-            "Reopen the map to cycle pages. Risk scales with distance, fog, and night."
-        )
+        blurb = "Select a coordinate on the city map. Risk scales with distance, fog, and night."
         self._show("LEAVE THE APARTMENT", blurb, choices, "map", "menu", "BACK")
         self.display.show("L")
 
@@ -381,11 +323,6 @@ class GameEngine:
         async with self._lock:
             if self.state.game_over:
                 return
-            # On story select, CONFIRM takes the classic scenario.
-            if self.state.menu == "scenario":
-                await self._apply_scenario("apartment")
-                await self._after_effect()
-                return
             label = self.state.confirm_label
             if label == "REST":
                 await self.apply_effect({"rest": True})
@@ -452,9 +389,6 @@ class GameEngine:
     async def apply_effect(self, effect: Dict[str, Any]):
         if effect.get("restart"):
             await self.start_new_game()
-            return
-        if effect.get("scenario"):
-            await self._apply_scenario(effect["scenario"])
             return
         if effect.get("expedition"):
             await self._start_expedition(effect["expedition"])

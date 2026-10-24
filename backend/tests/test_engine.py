@@ -22,47 +22,9 @@ def test_engine_initialization():
     assert engine.state.world.day == 1
     assert engine.state.player.health == 100
     assert engine.state.player.infection == 0
-    # New runs open on story selection with 4 scenario choices
-    assert engine.state.mode == "menu"
-    assert engine.state.menu == "scenario"
-    assert len(engine.state.current_event["choices"]) == 4
-    assert engine.state.confirm_label == "CLASSIC"
-
-    # Pick the classic scenario -> lands on the hub
-    asyncio.run(engine._apply_scenario("apartment"))
     assert engine.state.mode == "hub"
     assert engine.state.confirm_label == "REST"
-    assert engine.state.scenario == "apartment"
     assert len(engine.state.current_event["choices"]) == 4
-
-
-def test_scenario_selection():
-    engine = make_engine()
-    asyncio.run(engine.start_new_game())
-
-    # Nomad: bonus supplies, extra known locations, pipe equipped
-    asyncio.run(engine._apply_scenario("nomad"))
-    assert engine.state.scenario == "nomad"
-    assert engine.state.player.food == 7
-    assert engine.state.player.weapon == "pipe"
-    assert "Bus Depot" in engine.state.world.known_locations
-    assert engine.state.mode == "hub"
-
-    # Medic: starts already infected with medicine on hand
-    asyncio.run(engine.start_new_game())
-    asyncio.run(engine._apply_scenario("medic"))
-    assert engine.state.scenario == "medic"
-    assert engine.state.player.infection == 18
-    assert "antibiotics" in engine.state.player.inventory
-    assert "Hospital" in engine.state.world.known_locations
-
-    # Soldier: pistol + checkpoint knowledge, lower humanity
-    asyncio.run(engine.start_new_game())
-    asyncio.run(engine._apply_scenario("soldier"))
-    assert engine.state.scenario == "soldier"
-    assert engine.state.player.weapon == "pistol"
-    assert engine.state.player.humanity == 32
-    assert "City Prison" in engine.state.world.known_locations
 
 
 def test_infection_stages():

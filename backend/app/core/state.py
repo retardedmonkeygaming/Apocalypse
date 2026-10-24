@@ -50,7 +50,6 @@ class World:
     flags: Dict[str, Any] = field(default_factory=dict)
     npcs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     seen_events: List[str] = field(default_factory=list)
-    loc_page: int = 0
     has_dog: bool = False
     dog_name: str = "Scraps"
 
@@ -88,7 +87,6 @@ class GameState:
     fx: str = ""
     scene: str = "base"
     kid_name: str = "Eli"
-    scenario: str = "apartment"
 
     def clamp(self):
         p = self.player
@@ -149,7 +147,6 @@ class GameState:
             "fx": self.fx,
             "scene": self.scene,
             "kid_name": self.kid_name,
-            "scenario": self.scenario,
             "infection_stage": self.infection_stage(),
             "party": self.party(),
             "inv_slots": INV_SLOTS,
@@ -199,5 +196,4 @@ class GameState:
         state.confirm_label = data.get("confirm_label", "REST")
         state.scene = data.get("scene", "base")
         state.kid_name = data.get("kid_name", "Eli")
-        state.scenario = data.get("scenario", "apartment")
         return state

@@ -108,6 +108,3 @@ const SFX = {
 };
 
 SFX.init();
-
-// Expose on window — ui.js/game.js gate on `window.SFX` (const is not auto-on-window).
-window.SFX = SFX;

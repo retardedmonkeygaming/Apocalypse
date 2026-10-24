@@ -33,36 +33,16 @@ CHAR_MAP = {
 }
 
 
-_INSTANCE = None
-
-
-def _shared() -> "SevenSegment":
-    """Return the single shared 7-segment instance.
-
-    Prevents double GPIO claims when the app module gets imported twice
-    (e.g. `python -m backend.app.main` plus uvicorn's string import).
-    """
-    global _INSTANCE
-    if _INSTANCE is None:
-        _INSTANCE = object.__new__(SevenSegment)
-        _INSTANCE.pins = []
-        _INSTANCE.last = " "
-        _INSTANCE._init_hw()
-    return _INSTANCE
-
-
 class SevenSegment:
     """
     Hardware 7-segment single digit LED controller.
     Segments A through G wired to GPIO pins.
     Gracefully runs as software-only when hardware is absent.
-    Instantiation returns the shared singleton (see _shared).
     """
 
-    def __new__(cls):
-        return _shared()
-
-    def _init_hw(self):
+    def __init__(self):
+        self.pins = []
+        self.last = " "
         if settings.use_hardware:
             try:
                 from gpiozero import LED

@@ -29,19 +29,10 @@ def test_websocket_actions():
             assert "player" in init_state
             assert "world" in init_state
 
-            # Start fresh run -> opens on story selection
+            # Start fresh run
             ws.send_json({"action": "new_game"})
-            sel_state = ws.receive_json()
-            assert sel_state["mode"] == "menu"
-            assert sel_state["menu"] == "scenario"
-            assert sel_state["world"]["day"] == 1
-            assert len(sel_state["current_event"]["choices"]) == 4
-
-            # Pick first scenario (THE BOARDER) -> lands on hub
-            ws.send_json({"action": "choice", "key": "red"})
             fresh_state = ws.receive_json()
             assert fresh_state["mode"] == "hub"
-            assert fresh_state["scenario"] == "apartment"
             assert fresh_state["world"]["day"] == 1
 
             # Choice action: pick first choice (Scavenge)

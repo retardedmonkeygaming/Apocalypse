@@ -15,7 +15,6 @@ WEAPONS: Dict[str, Dict[str, Any]] = {
     "pistol": {"name": "Police 9mm", "dmg": 22, "ranged": True, "armor_pen": 2},
     "shotgun": {"name": "Remington 12G", "dmg": 34, "ranged": True, "armor_pen": 3},
     "rifle": {"name": "Hunting Rifle", "dmg": 40, "ranged": True, "armor_pen": 5},
-    "spear": {"name": "Rebar Spear", "dmg": 14, "ranged": False, "armor_pen": 2},
 }
 
 ITEMS: Dict[str, Dict[str, str]] = {
@@ -26,7 +25,6 @@ ITEMS: Dict[str, Dict[str, str]] = {
     "pistol": {"name": "Police 9mm", "desc": "Standard issue service handgun. Cold, compact comfort."},
     "shotgun": {"name": "Remington 12G", "desc": "Pump-action room cleaner. Devastating up close."},
     "rifle": {"name": "Hunting Rifle", "desc": "Bolt-action .308 with a cracked scope. High stopping power."},
-    "spear": {"name": "Rebar Spear", "desc": "Eight feet of rebar hammered to a point and lashed to a shovel handle. Keep them at reach."},
     "mask": {"name": "Filter Mask", "desc": "Improvised carbon filter. Cuts airborne spores and bite infection risk in half."},
     "gas_mask": {"name": "Military Gas Mask", "desc": "PBF canister respirator. Maximum protection against toxic bloater bile."},
     "radio_parts": {"name": "Radio Parts", "desc": "Vacuum tubes, solder, copper wire, and a quartz crystal."},
@@ -300,21 +298,6 @@ RECIPES: List[Dict[str, Any]] = [
         "give_res": {"ammo": 4},
         "log": "Repacked lead shot into spent brass casings. Smoky, but they shoot.",
     },
-    {
-        "id": "spear",
-        "name": "Rebar Spear",
-        "cost": {"scrap": 3},
-        "give_item": "spear",
-        "weapon": "spear",
-        "log": "Rebar sharpened on curb stone and lashed to a shovel handle. Reach beats courage.",
-    },
-    {
-        "id": "snare",
-        "name": "Tripwire Snare Line",
-        "cost": {"scrap": 2},
-        "flag": "snare",
-        "log": "Barbed snares strung across the stairwell. Things that climb will regret it.",
-    },
 ]
 
 ENEMIES: Dict[str, Dict[str, Any]] = {
@@ -406,51 +389,6 @@ ENEMIES: Dict[str, Dict[str, Any]] = {
     },
 }
 
-# ─────────────────────────────────────────────────────────────
-# EXPANDED CITY LOCATIONS (map expansion pass)
-# ─────────────────────────────────────────────────────────────
-
-EXPANDED_LOCATIONS: Dict[str, Dict[str, Any]] = {
-    "Fire Station": {
-        "id": "firestation",
-        "risk": 0.38,
-        "loot": "tools",
-        "blurb": "Engine company blackened by fire. Hook ladders hang like frozen vines from the truck bay.",
-    },
-    "City Prison": {
-        "id": "prison",
-        "risk": 0.60,
-        "loot": "contraband",
-        "blurb": "Sally port gates hanging open. Cellblock echoes carry sounds that are not footsteps.",
-    },
-    "Bus Depot": {
-        "id": "busdepot",
-        "risk": 0.34,
-        "loot": "fuel",
-        "blurb": "Rows of diesel buses sleeping in their numbered lanes. The fuel farm still ticks as it cools.",
-    },
-    "Waterworks": {
-        "id": "waterworks",
-        "risk": 0.44,
-        "loot": "water",
-        "blurb": "The municipal pumping station churns on backup power, pushing clean water through a dead city.",
-    },
-    "Overpass Camp": {
-        "id": "overpass",
-        "risk": 0.30,
-        "loot": "story",
-        "blurb": "A shantytown of tarps and shopping carts wedged beneath the elevated freeway, quiet as a held breath.",
-    },
-    "Memorial Stadium": {
-        "id": "stadium",
-        "risk": 0.55,
-        "loot": "cache",
-        "blurb": "Fifty thousand empty seats surrounding a field of FEMA tents. The scoreboard still flashes RED.",
-    },
-}
-
-LOCATIONS.update(EXPANDED_LOCATIONS)
-
 WEATHERS = ["clear", "clear", "overcast", "rain", "rain", "fog", "storm"]
 
 ENDINGS: Dict[str, Dict[str, str]] = {
@@ -515,68 +453,6 @@ ENDINGS: Dict[str, Dict[str, str]] = {
         "text": "With Scraps trotting loyally at your heel, you survived the worst the ruins could muster. Man and dog, curled together beside a glowing brazier, watching the sun rise clean over the rooftops.",
     },
 }
-
-
-# ─────────────────────────────────────────────────────────────
-# SCENARIOS — selectable starting stories (chosen with buttons 1-4 on a new run)
-# ─────────────────────────────────────────────────────────────
-
-SCENARIOS: Dict[str, Dict[str, Any]] = {
-    "apartment": {
-        "name": "THE BOARDER",
-        "tag": "Classic survival — balanced start",
-        "player": {},
-        "fort": 1,
-        "known": [],
-        "weapon": None,
-        "inventory": [],
-        "log": [
-            "You awaken behind reinforced plywood in the boarded apartment.",
-            "Outside, the city hums with rain, rust, and the relentless dead.",
-        ],
-    },
-    "nomad": {
-        "name": "THE NOMAD",
-        "tag": "Light & fast — you just rolled in on a stolen bike",
-        "player": {"food": 7, "water": 7, "ammo": 8, "scrap": 4, "morale": 60, "humanity": 45},
-        "fort": 0,
-        "known": ["Gas Station", "Bus Depot", "Overpass Camp", "Overgrown Park"],
-        "weapon": "pipe",
-        "inventory": ["pipe"],
-        "log": [
-            "The bike died on the overpass an hour ago. You dragged its scrap uphill and sold it twice.",
-            "This city is new to you — every street is a rumor, every door a coin flip.",
-        ],
-    },
-    "medic": {
-        "name": "THE FIELD MEDIC",
-        "tag": "Walk in already infected — medicine is your currency",
-        "player": {"infection": 18, "medkits": 3, "morale": 65, "humanity": 62, "food": 4, "water": 4, "ammo": 4},
-        "fort": 1,
-        "known": ["Hospital", "Ruined Pharmacy", "Overgrown Park"],
-        "weapon": None,
-        "inventory": ["antibiotics", "clean_gauze"],
-        "log": [
-            "You pulled three strangers from triage before the generators died. Two stayed dead.",
-            "A field dressing holds the bite on your forearm. For now, the fever is only a rumor.",
-        ],
-    },
-    "soldier": {
-        "name": "THE DESERTER",
-        "tag": "Gun & guilt — firepower at the cost of your soul",
-        "player": {"ammo": 14, "morale": 55, "humanity": 32, "food": 3, "water": 3, "scrap": 4, "medkits": 1},
-        "fort": 2,
-        "known": ["Military Checkpoint", "City Prison", "Fire Station", "Streets"],
-        "weapon": "pistol",
-        "inventory": ["pistol"],
-        "log": [
-            "You walked away from the checkpoint the night the order came to fire on civilians.",
-            "The service pistol has one magazine left, and you have one question left to answer.",
-        ],
-    },
-}
-
-SCENARIO_ORDER = ["apartment", "nomad", "medic", "soldier"]
 
 
 def default_npcs() -> Dict[str, Dict[str, Any]]:

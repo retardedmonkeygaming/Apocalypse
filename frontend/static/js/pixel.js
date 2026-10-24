@@ -412,8 +412,9 @@ const Scene = {
       px(ctx, x - 5, y - 18, 5, 8, "#d1d5db");
       px(ctx, x - 3, y - 10, 2, 5, "#522");
     }
-  },    drawWeather(ctx, weather, t) {
+  },
 
+  drawWeather(ctx, weather, t) {
     if (weather === "rain" || weather === "storm") {
       ctx.fillStyle = "rgba(180, 210, 255, 0.45)";
       const count = weather === "storm" ? 85 : 45;
@@ -446,6 +447,3 @@ const Scene = {
     }
   },
 };
-
-// Expose on window — ui.js/game.js gate on `window.Scene` (const is not auto-on-window).
-window.Scene = Scene;
