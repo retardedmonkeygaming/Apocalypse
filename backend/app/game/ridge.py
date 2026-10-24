@@ -6,6 +6,7 @@ morale stat as SANITY, humanity as AWARENESS and fortification as the
 tower's structural SEAL, so the main game is completely untouched.
 """
 
+import asyncio
 import random
 from typing import Any, Dict, List, Optional
 
@@ -376,7 +377,7 @@ class RidgeMode:
 
     # ── main hub (the cabin) ───────────────────────────────
 
-    def hub(self):
+    def hub(self, _e=None):
         s = self.s
         s.world.location = "Fire-Tower 2"
         s.menu = "ridge"
@@ -451,7 +452,9 @@ class RidgeMode:
         fn = handlers.get(action)
         self._seg_override = None  # each fresh action re-derives the display
         if fn:
-            await fn(effect)
+            out = fn(effect)
+            if asyncio.iscoroutine(out):
+                await out
         await self._flush_end()
 
     async def _flush_end(self):
@@ -873,8 +876,11 @@ class RidgeMode:
         learn_hit = 3 if ch == 88 else 2
         self._learn(learn_hit)
 
-        # HIJACK: once it has learned enough voices it owns the channel
-        if F.get("rd_learn", 0) >= 55 and not F.get(f"rd_hijack_{ch}") and random.random() < 0.5:
+        # HIJACK: once it has learned enough voices it owns the channel.
+        # The first hijack is guaranteed; later ones are probabilistic.
+        hijacked_any = any(F.get(k) for k in F if str(k).startswith("rd_hijack_"))
+        hijack_chance = 0.4 if hijacked_any else 1.0
+        if F.get("rd_learn", 0) >= 55 and not F.get(f"rd_hijack_{ch}") and random.random() < hijack_chance:
             F[f"rd_hijack_{ch}"] = True
             who = random.choice(["mark", "chloe", "sam"])
             npc = s.world.npcs.get(who, {})
