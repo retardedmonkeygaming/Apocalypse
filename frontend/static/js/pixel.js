@@ -606,6 +606,24 @@ const Scene = {
     px(ctx, 198, 36, 3, 94, "#3a2c1e");
     px(ctx, 34, 80, 252, 3, "#3a2c1e");
 
+    // THE WINDOW LIES — below 50 sanity a false companion stands outside
+    if (sanity < 50 && Math.floor(t / 70) % 3 === 1) {
+      ctx.globalAlpha = 0.55;
+      this.drawPerson(ctx, 232, 126, { head: "#9fb0b4", body: "#3d545c", leg: "#263238", arm: "#9fb0b4" }, 2, t);
+      ctx.globalAlpha = 1;
+      px(ctx, 234, 74, 6, 1, "rgba(190,205,210,0.4)"); // where its breath would fog the glass
+    }
+
+    // Scratching three-beat marks on the glass under high awareness/siege
+    const aware = (p && p.humanity) || 0;
+    if (flags.rd_siege_night || aware >= 40) {
+      const beat = Math.floor(t / 9) % 4;
+      for (let i = 0; i < beat; i++) {
+        const sx = 48 + i * 5;
+        px(ctx, sx, 46 + i * 3, 1, 7, "rgba(225,235,240,0.55)");
+      }
+    }
+
     // Cracks — grow as the tower seal drops
     const cracks = Math.max(0, 3 - seal);
     for (let c = 0; c < cracks; c++) {

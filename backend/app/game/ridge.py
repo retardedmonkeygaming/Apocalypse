@@ -9,6 +9,11 @@ tower's structural SEAL, so the main game is completely untouched.
 import random
 from typing import Any, Dict, List, Optional
 
+from backend.app.game.ridge_cast import (
+    FOCUS_SIGHTINGS, NEW_ENDINGS, WINDOW_LIES, WINDOW_TRUE, WORLD_EVENTS,
+    crew_line, merge_npcs,
+)
+
 RIDGE_ID = "dead_ridge"
 
 # ─────────────────────────────────────────────────────────────
@@ -230,6 +235,7 @@ EMAILS: List[Dict[str, Any]] = [
 ]
 
 ENDINGS = {
+    **NEW_ENDINGS,
     "verified": {
         "title": "THE VERIFIED WATCH",
         "victory": True,
@@ -277,6 +283,7 @@ class RidgeMode:
     def __init__(self, engine):
         self.e = engine
         self._pending_end: Optional[str] = None
+        self._seg_override: Optional[str] = None
 
     # ── state shorthands ────────────────────────────────────
 
@@ -318,7 +325,7 @@ class RidgeMode:
 
     def start(self):
         s = self.s
-        s.world.npcs = ridge_npcs()
+        s.world.npcs = merge_npcs(ridge_npcs())
         s.world.location = "Fire-Tower 2"
         s.world.fortification = 3
         s.player.morale = 85        # SANITY
@@ -337,6 +344,13 @@ class RidgeMode:
             "rd_mine_done": False, "rd_t1": False, "rd_ruins": False, "rd_railcar": False,
             "rd_flare": False, "rd_lift_choice": "", "rd_hatch_sealed": False,
             "rd_visited": ["Fire-Tower 2"], "rd_cal_locked": False, "rd_siege_night": 0,
+            # Definitive-version state
+            "rd_learn": 0,              # how much the entity has learned of your voices
+            "rd_recent": {},            # recent dialogue lines per companion (no repeats)
+            "rd_focus_day": 0,          # binocular focuses used today
+            "rd_world": {},             # world-evolution flags applied so far
+            "rd_elena_met": False, "rd_ash_met": False, "rd_cole_met": False,
+            "rd_ash_safe": False, "rd_voss_tape": False, "rd_cole_tested": False,
         })
         s.log = [
             "FORESTOS v4.2 booting... amber phosphor warm. Radio cold.",
@@ -397,6 +411,8 @@ class RidgeMode:
             return "S"
         if self.F.get("rd_siege_night"):
             return "d"
+        if self._seg_override:
+            return self._seg_override
         mode = s.menu or s.mode
         if mode == "ridge_cal":
             return "b"
@@ -412,6 +428,7 @@ class RidgeMode:
 
     def _seg(self, char: str):
         self.s.seg = char
+        self._seg_override = char
 
     def sanity(self) -> int:
         return self.s.player.morale
@@ -429,8 +446,10 @@ class RidgeMode:
             "tune": self.tune, "explore": self.explore,
             "beat": self.beat, "resolve": self.resolve, "end": self.end_by_choice,
             "docs_read": self.docs_read,
+            "focus": self.focus, "crew": self.crew_menu, "talk_crew": self.talk_crew,
         }
         fn = handlers.get(action)
+        self._seg_override = None  # each fresh action re-derives the display
         if fn:
             await fn(effect)
         await self._flush_end()
@@ -452,10 +471,10 @@ class RidgeMode:
         choices = []
         if day >= 2 and not F.get("rd_tower3_seen") and s.world.is_night:
             choices.append({"label": "Watch Tower 3 (South)", "effect": {"ridge": "beat", "beat": "tower3"}})
+        choices.append({"label": "Focus Binoculars", "effect": {"ridge": "focus"}})
+        choices.append({"label": "Crew Check-in", "effect": {"ridge": "crew"}})
         if s.world.is_night and self.sanity() < 60:
             choices.append({"label": "Scan the Treeline", "effect": {"ridge": "beat", "beat": "treeline"}})
-        choices.append({"label": "Count the Trees", "effect": {"ridge": "beat", "beat": "count"}})
-        choices.append({"label": "Step onto the Catwalk", "effect": {"ridge": "beat", "beat": "catwalk"}})
         choices.append({"label": "Back to the Desk", "effect": {"ridge": "hub"}})
 
         F["rd_watch_pending"] = True
@@ -508,6 +527,97 @@ class RidgeMode:
             self.hub()
         else:
             self.hub()
+
+    # ── LIVING WINDOW — focus, observation & the learning meter ──
+
+    def _learn(self, amount: int, note: str = ""):
+        """The entity learns with every voice it hears. Radio, answers, names."""
+        F = self.F
+        F["rd_learn"] = min(100, int(F.get("rd_learn", 0)) + amount)
+        if note:
+            self.s.log.append(note)
+
+    def _stage(self) -> str:
+        day = self.s.world.day
+        if day <= 7:
+            return "early"
+        if day <= 18:
+            return "mid"
+        return "late"
+
+    async def focus(self, _e=None):
+        """Binoculars on the Living Window: real intel if your mind is steady,
+        fabricated silhouettes if it isn't. Costs a look (awareness)."""
+        s, F = self.s, self.F
+        s.menu = "ridge"
+        if F.get("rd_focus_day") == s.world.day:
+            self.s.log.append("Your eyes won't focus again tonight. The lenses swim with afterimages.")
+            self.hub()
+            return
+        F["rd_focus_day"] = s.world.day
+
+        sanity = self.sanity()
+        stage = self._stage()
+        if sanity >= 50:
+            sight = random.choice(FOCUS_SIGHTINGS[stage])
+            self._aware(4, f"── BINOCULARS ({stage.upper()}) ──")
+            self.s.log.append(sight)
+            self._san(-2)
+            self.s.fx = "eerie" if stage != "early" else ""
+            title = "LIVING WINDOW — FOCUS LOCKED"
+        else:
+            lie = random.choice(WINDOW_LIES)
+            self._san(lie.get("san", -6), "── BINOCULARS — the glass lies to you ──")
+            self._aware(lie.get("aware", 4), lie["text"])
+            if lie.get("flag"):
+                F[lie["flag"]] = True
+            self.s.fx = "eerie"
+            title = "LIVING WINDOW — PERCEPTION FRACTURE"
+
+        choices = [{"label": "Lower the Binoculars", "effect": {"ridge": "hub"}}]
+        if sanity < 50:
+            choices.insert(0, {"label": "Look Again (It Wasn't Real)", "effect": {"ridge": "beat", "beat": "count"}})
+        self._show(title, self.s.log[-1], choices, "ridge_tower", "BACK", "event")
+        self._seg("U")
+
+    async def crew_menu(self, _e=None):
+        """Living dialogue: each companion answers from their own head."""
+        s, F = self.s, self.F
+        s.menu = "ridge"
+        party = [p for p in s.world.npcs.values()
+                 if p.get("alive") and p.get("at_base") and p.get("id") in ("mark", "chloe", "sam", "elena", "ash", "cole")]
+        recent = F.get("rd_recent", {})
+        sanity = self.sanity()
+        lines, choices = [], []
+        for p in party:
+            ln = crew_line(p["id"], sanity, recent)
+            if ln:
+                lines.append(f"{p['short']}: \"{ln['line']}\"")
+                choices.append({"label": f"Ask {p['short']}", "effect": {"ridge": "talk_crew", "who": p["id"]}})
+            if len(lines) >= 3:
+                break
+        F["rd_recent"] = recent
+        if not lines:
+            lines = ["The cabin is quiet except for the radio's floor of static."]
+        choices.append({"label": "Back to the Desk", "effect": {"ridge": "hub"}})
+        self._show("CREW CHECK-IN — THE CABIN SPEAKS", "\n".join(lines), choices, "ridge_tower", "BACK", "event")
+        self._seg("H")
+
+    async def talk_crew(self, e: Dict[str, Any]):
+        s, F = self.s, self.F
+        who = e.get("who", "mark")
+        recent = F.get("rd_recent", {})
+        ln = crew_line(who, self.sanity(), recent)
+        F["rd_recent"] = recent
+        npc = s.world.npcs.get(who, {"short": who})
+        text = f"{npc.get('short', who).upper()}: \"{ln['line']}\"" if ln else f"{npc.get('short', who)} says nothing."
+        # Talking aloud teaches the ridge: it learns fastest from its favorites
+        self._learn(2, "The ridge listens to every word. It keeps them.") if who in ("ash", "cole") else self._learn(1)
+        if self.sanity() < 40 and random.random() < 0.35:
+            text += "\n\nFor half a second the cadence is wrong — a beat late, like a held breath between words."
+            self.s.fx = "eerie"
+        choices = [{"label": "Back to the Desk", "effect": {"ridge": "hub"}}]
+        self._show(f"{npc.get('short', who).upper()} — CREW", text, choices, "ridge_tower", "BACK", "event")
 
     # ── FORESTOS LAPTOP ────────────────────────────────────
 
@@ -759,6 +869,31 @@ class RidgeMode:
         day = s.world.day
         self.s.fx = "static" if self.sanity() >= 50 else "eerie"
 
+        # Every listen feeds the learning loop
+        learn_hit = 3 if ch == 88 else 2
+        self._learn(learn_hit)
+
+        # HIJACK: once it has learned enough voices it owns the channel
+        if F.get("rd_learn", 0) >= 55 and not F.get(f"rd_hijack_{ch}") and random.random() < 0.5:
+            F[f"rd_hijack_{ch}"] = True
+            who = random.choice(["mark", "chloe", "sam"])
+            npc = s.world.npcs.get(who, {})
+            if npc.get("alive"):
+                self._san(-18, f"── CHANNEL {ch} HIJACKED: {npc.get('short', who)}'s voice, perfect, asking you a question only {npc.get('short', who)} would know ──")
+                self._aware(12)
+                choices = [
+                    {"label": "Answer It", "effect": {"ridge": "resolve", "res": "answered", "ch": ch}},
+                    {"label": "Kill the Power (Don't Answer)", "effect": {"ridge": "resolve", "res": "silent", "ch": ch}},
+                ]
+                self._show(f"CHANNEL {ch} — IT LEARNED {npc.get('short', who).upper()}",
+                           (f"The static resolves into {npc.get('short', who)} — not recorded, present, breathing. "
+                            f"It tells you something {npc.get('short', who)} said to you alone, in a private hour, "
+                            "and it waits, politely, for your reply.\n\nThe Rule of Three: if it speaks your name, don't answer."),
+                           choices, "ridge_radio", "BACK", "event")
+                self.s.fx = "eerie"
+                self._seg("!")
+                return
+
         if ch == 88 and day >= 10 and not F.get("rd_radio_crisis"):
             F["rd_radio_crisis"] = True
             choices = [
@@ -837,6 +972,30 @@ class RidgeMode:
             F["rd_visited"].append(node)
         s.log.append(f"── EXPEDITION: {node.upper()} ──")
         s.menu = ""
+
+        # Character encounters — the world grows a cast around your behavior
+        if node == "Ranger Station Ruins" and day >= 8 and not F.get("rd_elena_seen"):
+            F["rd_elena_seen"] = True
+            self._show("THE ROOT CELLAR — A RECORDER IS RUNNING",
+                       ("Under the stone hearth, wedged behind water-damaged files, a woman in a ruined lab coat "
+                        "is trying to pry a filing cabinet across a door. Dr. Elena Voss. Acoustic researcher, "
+                        "missing since week one. She talks fast and without blinking: 'It finishes my sentences. "
+                        "It finishes them CORRECTLY. Take me to your tower or give me something heavy.'"),
+                       [{"label": "Take Her In (She Knows This)", "effect": {"ridge": "resolve", "res": "elena_take"}},
+                        {"label": "Leave Her the Crowbar", "effect": {"ridge": "resolve", "res": "elena_leave"}}],
+                       "ridge_forest", "BACK", "event")
+            self._seg("U")
+            return
+        if node == "Limestone Sinkhole" and F.get("rd_world", {}).get("we_clearing") and not F.get("rd_ash_met"):
+            self._show("THE CLEARING SOUTH OF THE SINKHOLE",
+                       ("The pines simply stop. In the clearing a child sits cross-legged with a jar, humming. "
+                        "Ash — the kid from the missing-persons board, gone three weeks, dry and warm and calm. "
+                        "'I know the way out,' Ash says. 'It doesn't like me repeating things.'"),
+                       [{"label": "Bring Ash to the Tower", "effect": {"ridge": "resolve", "res": "ash_take"}},
+                        {"label": "Mark the Spot and Go", "effect": {"ridge": "resolve", "res": "ash_leave"}}],
+                       "ridge_forest", "BACK", "event")
+            self._seg("U")
+            return
 
         # Scripted day beats take priority
         if node == "The Copperhead Bridge" and day == 5 and not F.get("rd_bridge_done"):
@@ -1154,6 +1313,54 @@ class RidgeMode:
             self.s.fx = "shake"
             self.hub()
 
+        elif r == "answered":
+            # You validated its placement in the environment
+            self._learn(22, "It has your answer now. Your cadence. Your agreement.")
+            self._san(-20, "The channel clears. Nothing on it but your own breathing, slightly ahead of your lungs.")
+            self._aware(15)
+            F["rd_answered_the_ridge"] = True
+            s.fx = "eerie"
+            self.hub()
+
+        elif r == "silent":
+            self._san(-6, "You kill the breaker mid-sentence. Silence. The lesson: it only owns what you feed it.")
+            self._aware(-8, "It waits. Patience is on its side, and it knows you know.")
+            self.hub()
+
+        elif r == "elena_take":
+            F["rd_elena_met"] = True
+            npc = s.world.npcs.get("elena")
+            if npc:
+                npc.update({"met": True, "at_base": True, "trust": 3})
+            s.log.append("★ Dr. Elena Voss is alive, malnourished, and still recording. She joins the watch.")
+            if "voss_notes" not in s.player.inventory and len(s.player.inventory) < 8:
+                s.player.inventory.append("voss_notes")
+            self._san(8, "Someone in this tower has read the literature. That is worth ten sandbags.")
+            self.hub()
+
+        elif r == "elena_leave":
+            F["rd_elena_met"] = True
+            F["rd_voss_lost"] = True
+            s.log.append("You leave her the crowbar and the coordinates. Her recorder keeps running after you close the door.")
+            self._san(-8, "You will hear her voice on the band by Thursday. You know this the way you know your own name.")
+            self.hub()
+
+        elif r == "ash_take":
+            F["rd_ash_met"] = True
+            F["rd_ash_safe"] = True
+            npc = s.world.npcs.get("ash")
+            if npc:
+                npc.update({"met": True, "at_base": True, "trust": 5})
+            s.log.append("★ Ash rides back to Tower 2 in your coat, silent, humming something with no words.")
+            self._san(15, "+15 SANITY. There is a child asleep under this roof. Nothing else matters tonight.")
+            self.hub()
+
+        elif r == "ash_leave":
+            F["rd_ash_met"] = True
+            s.log.append("You mark the clearing and climb back out. Behind you, the humming stops when your boots hit the road.")
+            self._san(-12, "You will think about that hum for thirty days, and it will think about you.")
+            self.hub()
+
         else:
             self.hub()
 
@@ -1261,6 +1468,25 @@ class RidgeMode:
         else:
             self._san(2)
 
+        # ── World evolution: the ridge reacts to the campaign, not a script
+        world_flags = F.setdefault("rd_world", {})
+        for wev in WORLD_EVENTS:
+            if s.world.day >= wev["min_day"] and not world_flags.get(wev["flag"]):
+                world_flags[wev["flag"]] = True
+                s.log.append(f"── WORLD SHIFT: {wev['text']} ──")
+                self._aware(4)
+                s.fx = "eerie"
+
+        # ── Ranger Cole arrives around Day 12-15 (real? test him over time)
+        if s.world.day >= 13 and not F.get("rd_cole_met"):
+            F["rd_cole_met"] = True
+            npc = s.world.npcs.get("cole")
+            if npc:
+                npc.update({"met": True, "at_base": True, "trust": 1})
+            s.log.append("★ RANGER COLE arrives at dawn with a dispatch order nobody remembers sending. He salutes the tower and asks for your name twice.")
+            self._san(4)
+            self._aware(6)
+
         # Eclipse (Act IV)
         if s.world.day >= 26 and not F.get("rd_eclipse"):
             F["rd_eclipse"] = True
@@ -1312,21 +1538,35 @@ class RidgeMode:
 
     async def _evaluate_endings(self):
         s, F = self.s, self.F
+        core = [n for k, n in s.world.npcs.items() if n.get("alive") and k in ("mark", "chloe", "sam")]
         alive = sum(1 for n in s.world.npcs.values() if n.get("alive"))
+        core_alive = len(core)
         sanity = self.sanity()
         logs = F.get("rd_logs", 0)
+        learn = int(F.get("rd_learn", 0))
+        answered = bool(F.get("rd_answered_the_ridge"))
 
-        if F.get("rd_lift_choice") == "lift" and alive < 3:
+        # Priority order — earned, not arbitrary
+        if F.get("rd_lift_choice") == "lift" and core_alive < 3:
             await self._end("stolen_face")
-        elif sanity < 30 or F.get("rd_stayed"):
-            await self._end("hermit")
-        elif logs >= 25 and alive == 3 and sanity > 70:
-            await self._end("verified")
+        elif answered and learn >= 75 and sanity <= 40:
+            # It got your answer AND practiced your cadence for twenty days
+            await self._end("perfect_mask")
         elif sanity <= 0:
             await self._end("white_noise")
+        elif F.get("rd_ash_safe") and core_alive >= 2 and sanity >= 25:
+            await self._end("ash_kept")
+        elif s.world.npcs.get("elena", {}).get("at_base") and core_alive >= 2 and logs >= 24:
+            await self._end("voss_protocol")
+        elif logs >= 30 and core_alive == 3 and sanity > 60 and learn < 55:
+            # You never once fed it — the complete clean escape
+            await self._end("the_new_watch")
+        elif sanity < 30:
+            await self._end("hermit")
+        elif logs >= 25 and core_alive == 3 and sanity > 70:
+            await self._end("verified")
         else:
-            # Partial success: you finished the shift, but the ridge noticed
-            await self._end("verified" if logs >= 20 and alive >= 2 else "white_noise")
+            await self._end("verified" if logs >= 20 and core_alive >= 2 else "white_noise")
 
     async def _end(self, key: str):
         s = self.s
