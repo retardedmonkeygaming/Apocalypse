@@ -160,6 +160,9 @@ function updateUI(state) {
   const p = state.player;
   const w = state.world;
 
+  // 0. 3D VIEWPORT — same state drives the WebGL scene when enabled
+  if (window.Scene3D) Scene3D.update(state);
+
   // 1. HUD & CLOCK
   document.getElementById("day").textContent = w.day;
   const clockEl = document.getElementById("clock");

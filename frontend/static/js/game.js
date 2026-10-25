@@ -133,6 +133,10 @@ document.getElementById("btn-scanlines").addEventListener("click", () => {
   document.getElementById("btn-scanlines").textContent = `CRT: ${isNoScan ? "MODERN" : "VINTAGE"}`;
 });
 
+document.getElementById("btn-3d").addEventListener("click", () => {
+  if (window.Scene3D) comboFlash(Scene3D.cycleQuality());
+});
+
 document.getElementById("btn-map").addEventListener("click", () => {
   if (window.CityMap) CityMap.toggle();
 });

@@ -1119,3 +1119,33 @@ body.ridge-mode #story-terminal { border-color: #5a4028; }
   60%  { opacity: 0.8; transform: scale(1); }
   100% { opacity: 0; }
 }
+
+/* ══════════════════════════════════════════════════════════════ 3D VIEWPORT (Three.js) ══ */
+#view3d {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;                 /* shown by scene3d.js when active */
+  background: #000;
+}
+
+.canvas-wrapper.threed #view3d { display: block; }
+.canvas-wrapper.threed { height: 320px; }   /* more vertical room for the 3D shot */
+
+#btn-3d {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 14;
+  background: rgba(8, 12, 14, 0.72);
+  border: 1px solid #2a3a40;
+  color: #7fd4c0;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 4px 9px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+#btn-3d:hover { border-color: #7fd4c0; text-shadow: 0 0 6px #7fd4c0; }

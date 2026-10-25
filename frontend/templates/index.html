@@ -80,7 +80,9 @@
           <div id="scene-container">
             <div class="canvas-wrapper">
               <canvas id="view" width="320" height="180"></canvas>
+              <canvas id="view3d"></canvas>
               <div id="fx-flash"></div>
+              <button id="btn-3d" type="button" title="Cycle 3D quality (auto / high / low / off)">3D: AUTO</button>
             </div>
 
             <div id="story-terminal">
@@ -282,6 +284,8 @@
   </div>
 
   <!-- SCRIPTS -->
+  <script src="/static/vendor/three.min.js"></script>
+  <script src="/static/js/scene3d.js"></script>
   <script src="/static/js/audio.js"></script>
   <script src="/static/js/pixel.js"></script>
   <script src="/static/js/citymap.js"></script>

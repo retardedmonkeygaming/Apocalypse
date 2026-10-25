@@ -188,6 +188,78 @@ chromium-browser --kiosk --noerrdialogs --disable-infobars --check-for-update-in
 
 ---
 
+## 3D MODE — Realistic WebGL Lookout Tower
+
+The central viewport can render a **realistic 3D scene** (Three.js, fully vendored
+offline at `frontend/static/vendor/three.min.js`) instead of the 2D pixel canvas.
+Both engines are driven by the **exact same game state** — companions, Sanity,
+Awareness, weather, day/night, story scenes and travel locations — so nothing in
+the game changes except how the world is drawn.
+
+### What the 3D view shows
+
+- **Tower interior** — wet-wood walls, desk, radio, candle/amber lamp, window
+  frames; Mark/Chloe/Sam physically stand in the room (whoever is alive at base).
+- **Through the glass** — the pine ridge, Fire-Tower 1 and the distant Tower 3
+  (whose green `H·E·L·P` morse blinks at night), fog sheets, wind sway.
+- **Travel = new set.** Pick a location on the map and the viewport becomes that
+  place: Copperhead Bridge, Northern Ravine (gorge with drifting fog), Ranger
+  Station Ruins, Overturned Railcar, Limestone Sinkhole, Compass Cabins,
+  Mining Shaft, the Impossible Clearing, plus an exterior establishing shot.
+- **Day/night & weather** — sky, sun/hemisphere light, fog density and rain
+  particles all follow `world.is_night` and `world.weather` (high tier only for rain).
+- **The window lies at low Sanity** — false silhouettes outside, a companion
+  standing in the treeline who is inside, tall figures at high Awareness at night.
+- **Classic (non-Ridge) runs** render a dark ruined-city vista.
+
+### Controls
+
+- **`3D: AUTO` button** (top-right of the viewport) cycles:
+  `AUTO → HIGH → LOW → OFF → AUTO`.
+- **OFF** restores the original 2D pixel canvas exactly (also stored in
+  `localStorage.apoc3d`, so your choice survives reloads).
+- All gameplay, keyboard and arcade-button controls are unchanged.
+
+### Quality tiers
+
+| Tier | What it does |
+|---|---|
+| **HIGH** | 170-trees forest, antialiasing, pixelRatio ≤ 1.5, rain particles (900 pts), extra fog sprites, full lights |
+| **LOW** | ~50–70 trees, pixelRatio 1, no particles, cheaper lights — intended for Raspberry Pi 4 |
+| **AUTO** | Picks HIGH on desktops (≥5 cores, DPR < 2.5), LOW on weak/mobile GPUs |
+| **OFF** | 2D canvas only — zero GPU cost |
+
+### How to run
+
+Nothing new to install — start the server as usual and the 3D view is on by
+default (auto-detected):
+
+```bash
+python -m backend.app.main       # or: uvicorn backend.app.main:app --port 8000
+# open http://127.0.0.1:8000  → click “3D: AUTO” to cycle tiers
+```
+
+If WebGL is unavailable the engine disables itself silently and the 2D canvas
+keeps working. Files: `frontend/static/js/scene3d.js` (engine),
+`frontend/static/vendor/three.min.js` (r149 UMD build, offline).
+
+### Honest Raspberry Pi 4 performance notes
+
+- Tested headlessly on SwiftShader (software GL) at ~**23 FPS** in LOW tier —
+  a Pi 4's VideoCore VI hardware GL is faster than SwiftShader, so **LOW should
+  hold 30–60 fps** at the viewport's ~800×320 CSS size.
+- **HIGH is not recommended on the Pi**: antialiasing + 170 trees + rain points
+  will likely drop below 25 fps under Kiosk Chromium. AUTO resolves to LOW on
+  the Pi (4 cores → LOW).
+- The 3D loop still runs when the tab is hidden only at full RAF speed; if you
+  run 24/7, select **OFF** to save power and GPU heat in the cabinet.
+- WebGL must be enabled in kiosk Chromium (`--enable-gpu` / default on Pi OS;
+  avoid `--disable-gpu`).
+- Everything is procedural (canvas textures, primitive geometry) — no network,
+  no asset downloads, offline-first as required.
+
+---
+
 ## Running Automated Tests
 
 To run the complete unit and API test suite:
