@@ -103,6 +103,37 @@ MAP_ORDER = [
     "Overturned Railcar", "Limestone Sinkhole",
 ]
 
+# Trail graph — which nodes touch which. Reachability on the map is derived
+# from this plus where you have actually been, so the map grows as you walk it.
+ACCESS: Dict[str, List[str]] = {
+    "Fire-Tower 2": ["Fire-Tower 1", "The Copperhead Bridge", "The Compass Cabins",
+                     "Ranger Station Ruins", "Limestone Sinkhole"],
+    "Fire-Tower 1": ["The Northern Ravine", "Ranger Station Ruins"],
+    "The Northern Ravine": ["Overturned Railcar"],
+    "The Copperhead Bridge": ["Overturned Railcar", "The Compass Cabins"],
+    "The Compass Cabins": ["Old Mining Shaft 4"],
+    "Old Mining Shaft 4": ["Limestone Sinkhole"],
+    "Ranger Station Ruins": [],
+    "Overturned Railcar": [],
+    "Limestone Sinkhole": [],
+}
+
+# Field-view verbs — the exploration surface while the viewport is locked on
+# a location. Every one of them reacts to time, weather, sanity and awareness.
+FIELD_VERBS = ["search", "listen", "call", "photo", "return"]
+
+# Locations whose story beat is waiting for you (map shows them as "!" )
+def _pending_beat(day: int, F: Dict[str, Any]) -> Optional[str]:
+    if day == 5 and not F.get("rd_bridge_done"):
+        return "The solar batteries are dying. Decide now."
+    if day >= 21 and not F.get("rd_mine_done"):
+        return "The master breaker just tripped. The laptop is dark."
+    if day in (14, 15, 16) and not F.get("rd_cabins_done"):
+        return "A tape player is still wound inside Cabin 2."
+    if day == 24 and not F.get("rd_sensor_done"):
+        return "The sensor mast has torn loose. 50mph gusts."
+    return None
+
 # ─────────────────────────────────────────────────────────────
 # DOCUMENTS TAB (in-game database)
 # ─────────────────────────────────────────────────────────────
@@ -477,6 +508,8 @@ class RidgeMode:
             "beat": self.beat, "resolve": self.resolve, "end": self.end_by_choice,
             "docs_read": self.docs_read,
             "focus": self.focus, "crew": self.crew_menu, "talk_crew": self.talk_crew,
+            "goto": self.goto, "field": self.field, "map": self.expedition,
+            "map_open": self.map_open,
         }
         fn = handlers.get(action)
         self._seg_override = None  # each fresh action re-derives the display
@@ -505,15 +538,30 @@ class RidgeMode:
             choices.append({"label": "Watch Tower 3 (South)", "effect": {"ridge": "beat", "beat": "tower3"}})
         choices.append({"label": "Focus Binoculars", "effect": {"ridge": "focus"}})
         choices.append({"label": "Crew Check-in", "effect": {"ridge": "crew"}})
+        weather = (s.world.weather or "clear").lower()
+        if weather in ("fog", "storm"):
+            choices.append({"label": "Put Your Ear to the Glass", "effect": {"ridge": "beat", "beat": "catwalk"}})
+        elif s.player.humanity >= 50:
+            choices.append({"label": "Count the Treeline Again", "effect": {"ridge": "beat", "beat": "count"}})
+        elif s.world.is_night:
+            choices.append({"label": "Step Onto the Catwalk", "effect": {"ridge": "beat", "beat": "catwalk"}})
         if s.world.is_night and self.sanity() < 60:
             choices.append({"label": "Scan the Treeline", "effect": {"ridge": "beat", "beat": "treeline"}})
         choices.append({"label": "Back to the Desk", "effect": {"ridge": "hub"}})
 
         F["rd_watch_pending"] = True
+        conditions = {
+            "fog": "Fog rolls in slow sheets across the black pine canopy.",
+            "storm": "The glass flexes in its frame every few seconds.",
+            "overcast": "Low cloud drags across the southern peak.",
+            "clear": "Clear enough that every trunk is a hard black line.",
+        }.get(weather, "Wind speed: near zero, though the treetops keep swaying.")
+        mind = ("Your own reflection lags a half-second behind you at the edge of the glass."
+                if self.sanity() < 45 else
+                "The southern peak is a charcoal smudge against the stars.")
         text = (
-            "You wipe the condensation from the glass with your sleeve. Fog rolls in slow sheets across "
-            "the black pine canopy. Wind speed: near zero, though the treetops keep swaying.\n"
-            "The southern peak is a charcoal smudge against the stars."
+            "You wipe the condensation from the glass with your sleeve.\n"
+            f"{conditions}\n{mind}"
         )
         self._show("OBSERVATION DECK", text, choices, "ridge_tower", "BACK", "event")
         self._seg("H")
@@ -1009,6 +1057,276 @@ class RidgeMode:
             self._san(2, "Channel 104: numbers, calmly recited, in no language you know.")
         self.hub()
 
+    # ── MAP: live availability ──────────────────────────────
+
+    def _neighbors(self, node: str) -> List[str]:
+        out = list(ACCESS.get(node, []))
+        for k, v in ACCESS.items():
+            if node in v and k not in out:
+                out.append(k)
+        return out
+
+    def map_state(self) -> List[Dict[str, Any]]:
+        """Recomputed on every broadcast: day, weather, sanity, awareness,
+        daylight budget and past choices all decide what the map offers."""
+        s, F = self.s, self.F
+        day, night = s.world.day, s.world.is_night
+        sanity, aware = self.sanity(), s.player.humanity
+        weather = (s.world.weather or "clear").lower()
+        visited = F.get("rd_visited", [])
+        actions = int(F.get("rd_actions", 2))
+        eclipse = bool(F.get("rd_eclipse"))
+
+        out: List[Dict[str, Any]] = []
+        for nid in ["Fire-Tower 2"] + MAP_ORDER:
+            node = NODES[nid]
+            status, reason = "open", ""
+            beat = _pending_beat(day, F) if nid != "Fire-Tower 2" else None
+            if nid == "Fire-Tower 2":
+                status = "home"
+            else:
+                reachable = nid in visited or any(n in visited for n in self._neighbors(nid))
+                day_gate = {"The Copperhead Bridge": 2, "Ranger Station Ruins": 3,
+                            "Overturned Railcar": 4, "Limestone Sinkhole": 6,
+                            "Old Mining Shaft 4": 9}.get(nid, 1)
+                if not reachable:
+                    status, reason = "locked", "No known trail — walk the neighbouring ground first."
+                elif day < day_gate:
+                    status, reason = "locked", f"Too far to make before dark until Day {day_gate}."
+                elif actions <= 0:
+                    status, reason = "locked", "No daylight left. Rest, or spend the tower hours."
+                elif sanity < 25:
+                    status, reason = "locked", "Your hands will not come off the railing."
+                elif weather == "storm" and node["risk"] >= 0.5:
+                    status, reason = "blocked", "The storm owns the high ground right now."
+                elif aware >= 75 and node["risk"] >= 0.5:
+                    status, reason = "blocked", "The ridge is awake over there. It knows you are counting it."
+                elif eclipse:
+                    status, reason = "danger", "Eclipse. Nothing out there is on your side."
+                elif night:
+                    status, reason = "danger", "After dark the pines keep their own hours."
+                elif sanity < 40 or weather in ("fog", "storm") or aware >= 60:
+                    status, reason = "danger", "Bad light, bad air, or something already watching."
+            risk = int(node["risk"] * 100)
+            if status == "danger":
+                risk = min(95, risk + 20)
+            out.append({
+                "id": nid, "short": node["short"], "status": status,
+                "reason": reason, "risk": risk, "beat": bool(beat), "beat_note": beat or "",
+                "scene": NODE_SCENE.get(nid, "ridge_tower"),
+                "visited": nid in visited, "blurb": node["blurb"],
+            })
+        return out
+
+    def _map_entry(self, node: str) -> Optional[Dict[str, Any]]:
+        return next((m for m in self.map_state() if m["id"] == node), None)
+
+    # ── TRAVEL: pick any accessible node, the viewport goes with you ──
+
+    async def goto(self, e: Dict[str, Any]):
+        node = str(e.get("node") or e.get("id") or "")
+        entry = self._map_entry(node)
+        if entry is None:
+            self.s.log.append(f"'{node}' is not on the Dead Ridge map.")
+            await self.expedition()
+            return
+        if entry["status"] in ("locked", "blocked"):
+            self.s.log.append(f"── {node}: {entry['reason']} ──")
+            self.s.fx = "miss"
+            await self.expedition()
+            return
+        if node == "Fire-Tower 2":
+            # Coming home should always feel like the safest screen in the game
+            self.s.log.append("Back up the ladder. The cabin door bars behind you.")
+            self.hub()
+            return
+        await self.explore({"node": node})
+
+    # ── FIELD VIEW: the live exploration surface on location ──
+
+    def _arrival(self, node: str) -> str:
+        """Environmental read of the place first — before any dialogue."""
+        s = self.s
+        w = (s.world.weather or "clear").lower()
+        clock = "eclipse-light" if self.F.get("rd_eclipse") else ("dark" if s.world.is_night else "grey daylight")
+        fog = {"fog": "Fog at chest height — visibility ten paces.",
+               "storm": "Wind flexes the whole treeline like wire.",
+               "overcast": "Low cloud sits on the peaks.",
+               "clear": "Clear and soundless enough to hear your own pulse."}.get(w, "The air is still.")
+        entry = self._map_entry(node) or {}
+        risk = entry.get("risk", 40)
+        near = "Nothing moving. Yet." if risk < 45 else (
+            "Something is matching your pace two tree-lines back." if risk < 70 else
+            "Whatever is out here is close enough to hear you breathe.")
+        return (
+            f"{clock.upper()} · {w.upper()} · RISK {risk}%\n"
+            f"{NODES[node]['blurb']}\n{fog}\n{near}"
+        )
+
+    def _field_view(self, node: str, extra: str = ""):
+        """Center viewport is locked on `node`; verbs act on the live scene."""
+        s, F = self.s, self.F
+        s.world.location = node
+        s.scene = NODE_SCENE.get(node, "ridge_forest")
+        s.menu = ""
+        visited_twice = int(F.get("rd_visits", {}).get(node, 0)) > 1
+        text = self._arrival(node)
+        if extra:
+            text += "\n\n" + extra
+        if visited_twice:
+            text += "\n\nYou have been here before. The place has changed since — or you have."
+        choices = [
+            {"label": "Search the Site", "effect": {"ridge": "field", "verb": "search"}},
+            {"label": "Stand Still & Listen", "effect": {"ridge": "field", "verb": "listen"}},
+            {"label": "Call Out", "effect": {"ridge": "field", "verb": "call"}},
+            {"label": "Return to Tower 2", "effect": {"ridge": "field", "verb": "return"}},
+        ]
+        # Contextual verbs: only appear when the situation actually offers them.
+        # CONFIRM is always RETURN, so going home is never more than one press.
+        night = s.world.is_night
+        weather = (s.world.weather or "").lower()
+        if weather in ("fog", "storm"):
+            choices[1] = {"label": "Listen Through the Weather",
+                          "effect": {"ridge": "field", "verb": "listen"}}
+        if self.sanity() >= 35 and not night:
+            choices[3] = {"label": "Photograph the Ground",
+                          "effect": {"ridge": "field", "verb": "photo"}}
+        self._show(f"ON LOCATION — {node.upper()}", text, choices,
+                   NODE_SCENE.get(node, "ridge_forest"), "RETURN", "event")
+        self._seg("M")
+
+    async def field(self, e: Dict[str, Any]):
+        s, F = self.s, self.F
+        verb = str(e.get("verb", "return"))
+        node = s.world.location
+        day = s.world.day
+        night = s.world.is_night
+
+        if verb == "return":
+            s.log.append(f"You leave {node} behind. The ladder up is a straight line to safety.")
+            self.hub()
+            return
+
+        if verb == "search":
+            # Story beats and first-visit discoveries resolve here
+            scripted = (
+                (node == "The Copperhead Bridge" and day == 5 and not F.get("rd_bridge_done"))
+                or (node == "Old Mining Shaft 4" and day >= 21 and not F.get("rd_mine_done"))
+                or (node == "The Compass Cabins" and day in (14, 15, 16) and not F.get("rd_cabins_done"))
+                or (node == "The Compass Cabins" and day == 24 and not F.get("rd_sensor_done"))
+            )
+            if scripted:
+                if node == "The Copperhead Bridge":
+                    await self._beat_bridge()
+                elif node == "Old Mining Shaft 4":
+                    await self._beat_mine()
+                elif day == 24 and not F.get("rd_sensor_done"):
+                    await self._beat_sensor()
+                else:
+                    await self._beat_cabins()
+                return
+            first_visit = {
+                "Fire-Tower 1": ("rd_t1", self._site_t1),
+                "Ranger Station Ruins": ("rd_ruins", self._site_ruins),
+                "Overturned Railcar": ("rd_railcar", self._site_railcar),
+                "Limestone Sinkhole": ("rd_flare", self._site_sinkhole),
+            }
+            if node in first_visit and not F.get(first_visit[node][0]):
+                await first_visit[node][1]()
+                return
+            # Generic search — always risky after dark, always costs composure
+            entry = self._map_entry(node) or {"risk": 40}
+            risk = entry.get("risk", 40) / 100.0 + (0.2 if night else 0.0)
+            if random.random() < risk:
+                self._san(-7, "You turn over one stone too many. Something turns its head.")
+                self._aware(9)
+                s.fx = "eerie"
+                self._show(f"{node.upper()} — SOMETHING HEARD YOU",
+                           ("The scrape of your glove on metal goes on a half-beat too long, and then the "
+                            "forest stops making noise entirely. Two hundred yards of pine go quiet at once — "
+                            "which means whatever stopped them is between here and the tower."),
+                           [{"label": "Move — Now", "effect": {"ridge": "field", "verb": "return"}},
+                            {"label": "Freeze and Listen", "effect": {"ridge": "field", "verb": "listen"}}],
+                           NODE_SCENE.get(node, "ridge_forest"), "RETURN", "event")
+                self.s.fx = "eerie"
+                self._seg("d")
+            else:
+                found = random.choice(["rations", "battery cells", "scrap copper", "clean water"])
+                amt = 2 if (node == "The Compass Cabins" and self.alive("chloe")) else 1
+                if found == "rations":
+                    s.player.food += amt
+                elif found == "clean water":
+                    s.player.water += amt
+                else:
+                    s.player.scrap += amt
+                self._san(2)
+                s.log.append(f"Search at {node}: salvaged {amt} {found}.")
+                self._field_view(node, f"Working the site with the lantern low, you salvage {amt} {found}. "
+                                       "Behind the fog a branch snaps in a three-beat rhythm and stops when you stop.")
+            return
+
+        if verb == "listen":
+            # The world answers differently by hour, weather and mind
+            learn = 1 if night else 0
+            if (s.world.weather or "").lower() in ("fog", "storm"):
+                text = ("Wind drags across the rock face and for a moment it has consonants. You catch "
+                        "three syllables that are not a language you know and one that is.")
+                self._san(-4, "The weather says something in your own cadence.")
+                self._aware(5)
+            elif night:
+                text = ("You count the sounds: wind, your pulse, the tower groan, a fourth thing that "
+                        "stops when you hold your breath. It is patient enough to wait for you to exhale.")
+                self._san(-3)
+                self._aware(4)
+                learn = 2
+            else:
+                text = ("Daylight birds, iron settling, water under the ravine. Ordinary sounds — which "
+                        "is its own relief. Nothing here has learned to speak yet.")
+                self._san(3, "Daylight listening. Nothing answered. That is the good version.")
+            if learn:
+                self._learn(learn)
+            s.fx = "eerie" if night else ""
+            self._field_view(node, text)
+            return
+
+        if verb == "call":
+            # Calling out is the single fastest way to feed the mimicry loop
+            self._learn(4, "You shouted your position into the ridge. It logged every syllable.")
+            self._aware(8)
+            if night or self.sanity() < 45:
+                self._san(-8, "Your own voice comes back from the trees a half-second late.")
+                s.fx = "eerie"
+                text = ("You call a friend's name into the fog. Two answers arrive from three directions — "
+                        "and the third one is your own voice, finishing the sentence for you.")
+            else:
+                text = ("You shout until the echo runs out of mountain. Somewhere below, a single call "
+                        "returns in Mark's cadence — Mark is two miles east, in the tower.")
+                self._san(-3)
+            self._field_view(node, text)
+            return
+
+        if verb == "photo":
+            # Sam's camera: a photograph is evidence — unless the glass is lying
+            self._aware(3)
+            if self.sanity() >= 45:
+                doc_note = ""
+                if day >= 8 and "freq_chart" not in F.get("rd_docs", []):
+                    F.setdefault("rd_docs", []).append("freq_chart")
+                    doc_note = " In the background, pinned to a fence post: a hand-annotated frequency chart."
+                    s.log.append("◆ Document recovered: Local Frequency Analysis Chart.")
+                self._san(2)
+                text = ("The flash fires once and the clearing floods white. In the viewfinder, ordinary "
+                        "wet wood, ordinary fern, ordinary dark." + doc_note)
+            else:
+                self._san(-6, "The developed frame shows you from behind — holding the camera you are holding.")
+                text = ("You review the frame on the LCD. It shows this clearing from twelve feet higher "
+                        "than you are standing, and it shows the back of your own head. The timestamp is tomorrow.")
+                s.fx = "eerie"
+            self._field_view(node, text)
+            return
+
+        self.hub()
+
     # ── EXPEDITIONS (overworld sandbox) ────────────────────
 
     async def expedition(self, _e=None):
@@ -1042,20 +1360,55 @@ class RidgeMode:
             "15 square kilometers of Appalachian pine. You must be back at a tower before midnight.\n\n"
             + "\n".join(lines)
         )
-        choices = [{"label": n, "effect": {"ridge": "explore", "node": n}} for n in shown]
+        # Live map statuses — locked/blocked nodes explain themselves
+        status_lines = []
+        for m in self.map_state():
+            if m["id"] in ("Fire-Tower 2",):
+                continue
+            mark = {"open": "·", "danger": "!", "locked": "×", "blocked": "×"}.get(m["status"], "·")
+            note = f"  ({m['reason']})" if m["status"] in ("locked", "blocked") else (
+                "  ⚠ STORY BEAT: " + m["beat_note"] if m["beat"] else "")
+            status_lines.append(f"{mark} {m['id']} — {m['risk']}% exposure{note}")
+        text = (
+            f"OVERWORLD — {clock} · DAY {day}/30 · {len(F.get('rd_visited', []))}/{len(MAP_ORDER) + 1} GROUNDS KNOWN\n"
+            "Open the MAP (combo 1+2 / Tab) and click any open node to walk there directly,\n"
+            "or page through the list below. You must be back at a tower before midnight.\n\n"
+            + "\n".join(status_lines)
+        )
+        open_nodes = [m["id"] for m in self.map_state()
+                      if m["id"] != "Fire-Tower 2" and m["status"] in ("open", "danger")]
+        page_nodes = [n for n in shown if n in open_nodes] or open_nodes[:4]
+        choices = [{"label": n, "effect": {"ridge": "explore", "node": n}} for n in page_nodes[:4]]
+        choices.append({"label": "Open Tactical Map", "effect": {"ridge": "map_open"}})
         self._show("EXPEDITION — DEAD RIDGE OVERWORLD", text, choices, "ridge_forest", "BACK", "event")
         self._seg("M")
+
+    async def map_open(self, _e=None):
+        """The WebUI opens the clickable tactical map on this signal."""
+        self.s.last_action = "__open_map__"
+        await self.expedition()
 
     async def explore(self, e: Dict[str, Any]):
         s, F = self.s, self.F
         node = e.get("node", "")
         day = s.world.day
+        # Access gate — the map is free-form, but a locked ground refuses you
+        entry = self._map_entry(node) if node in NODES else None
+        if entry is None:
+            self.s.log.append(f"'{node}' is not on the Dead Ridge map.")
+            await self.expedition()
+            return
         scripted = (
             (node == "The Copperhead Bridge" and day == 5 and not F.get("rd_bridge_done"))
             or (node == "Old Mining Shaft 4" and day >= 21 and not F.get("rd_mine_done"))
             or (node == "The Compass Cabins" and day in (14, 15, 16) and not F.get("rd_cabins_done"))
             or (node == "The Compass Cabins" and day == 24 and not F.get("rd_sensor_done"))
         )
+        if entry["status"] in ("locked", "blocked") and not scripted:
+            self.s.log.append(f"── {node}: {entry['reason']} ──")
+            self.s.fx = "miss"
+            await self.expedition()
+            return
         if int(F.get("rd_actions", 2)) <= 0 and not scripted:
             # No daylight left — the treeline owns this hour
             self.hub()
@@ -1063,6 +1416,8 @@ class RidgeMode:
         s.world.location = node
         if node not in F.get("rd_visited", []):
             F["rd_visited"].append(node)
+        visits = F.setdefault("rd_visits", {})
+        visits[node] = int(visits.get(node, 0)) + 1
         s.log.append(f"── EXPEDITION: {node.upper()} ──")
         s.menu = ""
         # Daylight is a budget: each excursion burns one action
@@ -1107,54 +1462,11 @@ class RidgeMode:
         if node == "The Compass Cabins" and day == 24 and not F.get("rd_sensor_done"):
             await self._beat_sensor()
             return
-        if node == "Fire-Tower 1" and not F.get("rd_t1"):
-            await self._site_t1()
-            return
-        if node == "Ranger Station Ruins" and not F.get("rd_ruins"):
-            await self._site_ruins()
-            return
-        if node == "Overturned Railcar" and not F.get("rd_railcar"):
-            await self._site_railcar()
-            return
-        if node == "Limestone Sinkhole" and not F.get("rd_flare"):
-            await self._site_sinkhole()
-            return
+        # First-visit discoveries resolve from the field view's SEARCH, so the
+        # player always sees the place itself before the payoff.
 
-        # Generic node excursion
-        risk = NODES.get(node, {}).get("risk", 0.4)
-        if s.world.is_night:
-            risk += 0.2
-        if random.random() < risk:
-            self._san(-8, "Something follows you through the pines, one tree at a time.")
-            self._aware(10)
-            s.fx = "eerie"
-            self._show(f"{node.upper()} — YOU ARE NOT ALONE",
-                       ("Branches snap in a three-beat rhythm behind you. You walk faster; the rhythm keeps "
-                        "pace exactly. By the time you reach the ladder your flashlight is dimming and your "
-                        "hands won't stop shaking."),
-                       [{"label": "Climb Back to the Cabin", "effect": {"ridge": "hub"}}],
-                       NODE_SCENE.get(node, "ridge_forest"), "BACK", "event")
-            self._seg("S")
-        else:
-            found = random.choice(["rations", "battery cells", "scrap copper", "clean water"])
-            amt = 2 if (node == "The Compass Cabins" and self.alive("chloe")) else 1
-            if found == "rations":
-                s.player.food += amt
-            elif found == "clean water":
-                s.player.water += amt
-            else:
-                s.player.scrap += amt
-            s.log.append(f"Quiet excursion. Salvaged {amt} {found}. The forest watched and said nothing.")
-            self._san(2)
-            # Show the place itself before returning — the view IS the reward
-            sc = NODE_SCENE.get(node, "ridge_forest")
-            self._show(f"{node.upper()} — QUIET EXCURSION",
-                       (f"You work the site with the lantern low. Salvaged {amt} {found}.\n"
-                        "Somewhere behind the fog, a branch snaps in a three-beat rhythm and stops "
-                        "when you stop. The tower ladder is a straight line home."),
-                       [{"label": "Climb Back to the Tower", "effect": {"ridge": "hub"}}],
-                       sc, "BACK", "event")
-            self._seg("M")
+        # Generic arrival: the viewport becomes the place, then you act on it
+        self._field_view(node)
 
     # ── Scripted beats ─────────────────────────────────────
 

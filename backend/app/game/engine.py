@@ -51,14 +51,30 @@ class GameEngine:
         self._broadcast = None
         self._lock = asyncio.Lock()
         self.ridge = RidgeMode(self)
+        # Monotonic id for whatever screen is on the glass. Lets the input path
+        # tell "a fresh, never-answered prompt" apart from "a stale one", which
+        # is how controls used to get stuck refusing presses.
+        self._event_seq = 0
+        self._resolved_nonce = None
 
     def set_broadcast(self, callback):
         self._broadcast = callback
 
+    def state_payload(self) -> dict:
+        """Wire format for every state push. Story modes inject their own
+        derived views (the Dead Ridge map is computed fresh each time)."""
+        payload = self.state.to_dict()
+        if self.state.scenario == RIDGE_ID:
+            try:
+                payload["map_nodes"] = self.ridge.map_state()
+            except Exception:
+                payload["map_nodes"] = []
+        return payload
+
     async def broadcast(self):
         if self._broadcast:
             self._sync_seg()
-            await self._broadcast(self.state.to_dict())
+            await self._broadcast(self.state_payload())
             self.state.fx = ""
 
     def _sync_seg(self):
@@ -195,12 +211,14 @@ class GameEngine:
         self.state.scene = scene
         self.state.waiting_for_choice = True
         self.state.confirm_label = confirm
+        self._event_seq += 1
         self.state.current_event = {
             "id": mode,
             "title": title,
             "text": text,
             "choices": self._choices(choices),
             "scene": scene,
+            "nonce": self._event_seq,
         }
 
     def _hub_menu(self):
@@ -397,12 +415,21 @@ class GameEngine:
                     await self.start_new_game()
                 return
 
-            if not self.state.waiting_for_choice or not self.state.current_event:
+            if not self.state.current_event:
                 return
 
             choices = self.state.current_event.get("choices", [])
             choice = next((c for c in choices if c["key"] == key), None)
             if not choice:
+                return
+
+            # Controls must never drop. A press is honoured when the prompt is
+            # live, or when nobody has answered this exact prompt yet — and it
+            # is swallowed only when the same prompt already resolved, so a
+            # double-press or a stale screen can never fire an action twice.
+            nonce = self.state.current_event.get("nonce")
+            if (not self.state.waiting_for_choice
+                    and nonce is not None and nonce == self._resolved_nonce):
                 return
 
             if not self._choice_allowed(choice):
@@ -413,6 +440,8 @@ class GameEngine:
             self.state.last_action = choice["label"]
             self.state.log.append(f"> {choice['label']}")
             self.state.waiting_for_choice = False
+            if nonce is not None:
+                self._resolved_nonce = nonce
 
             # Optional Gemini hook for emergent flavor text
             eff = choice.get("effect") or {}
@@ -428,6 +457,16 @@ class GameEngine:
         if flavor:
             self.state.log.append(f"📻 \"{flavor}\"")
             await self.broadcast()
+
+    async def handle_goto(self, node: str):
+        """Direct travel from a click on the tactical map (Dead Ridge)."""
+        async with self._lock:
+            if self.state.game_over or not node:
+                return
+            if self.state.scenario != RIDGE_ID:
+                return
+            await self.apply_effect({"ridge": "goto", "node": node})
+            await self._after_effect()
 
     async def handle_confirm(self):
         async with self._lock:
@@ -447,7 +486,7 @@ class GameEngine:
                 await self.apply_effect({"rest": True})
                 await self._after_effect()
                 return
-            if label in ("BACK", "CLOSE LID", "—"):
+            if label in ("BACK", "CLOSE LID", "RETURN", "—"):
                 if not self.state.combat.active:
                     if self.state.scenario == RIDGE_ID:
                         self.ridge.hub()

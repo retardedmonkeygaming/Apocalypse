@@ -19,6 +19,33 @@ You wake in a boarded apartment room in a fallen city. Channel 7 emergency radio
 
 ---
 
+## Screenshots
+
+> Replace the placeholders below with real captures (1280×800, CRT filter on).
+> Drop them in `docs/screenshots/` — the paths are already wired up.
+
+| | |
+|---|---|
+| ![Home base hub](docs/screenshots/01-hub.png)<br>*Classic run — Home Base hub, 7-segment mirror showing health* | ![Dead Ridge watch cabin](docs/screenshots/02-ridge-cabin.png)<br>*Dead Ridge — Fire-Tower 2 at dusk, crew check-in* |
+| ![Tactical map](docs/screenshots/03-map.png)<br>*Tactical map — live node status, click to travel* | ![Field view](docs/screenshots/04-field.png)<br>*Field view — on location at the Copperhead Bridge* |
+| ![Living Window](docs/screenshots/05-window.png)<br>*Living Window at low sanity — the glass starts lying* | ![3D tower](docs/screenshots/06-3d-tower.png)<br>*3D mode — WebGL lookout interior, HIGH tier* |
+| ![ForestOS laptop](docs/screenshots/07-forestos.png)<br>*ForestOS — inbox, barometric calibration, log engine* | ![Weather station](docs/screenshots/08-weather.png)<br>*Weather station overlay (combo `2+4` / key `W`)* |
+
+---
+
+## Documentation
+
+| Document | What's inside |
+|---|---|
+| [docs/webui.md](docs/webui.md) | **WebUI reference** — every panel, meter, button, keyboard shortcut and combo |
+| [docs/field-guide.md](docs/field-guide.md) | **Watchtower Field Guide** — the practical manual *and* the in-universe forestry handbook |
+| [docs/forestos.md](docs/forestos.md) | **ForestOS laptop guide** — inbox, radar, calibration, log engine, documents |
+| [docs/design.md](docs/design.md) | **Aesthetic & design** — palette, CRT rules, pixel philosophy, audio, the Living Window |
+| [DESIGN.md](DESIGN.md) / [DESIGN_RIDGE.md](DESIGN_RIDGE.md) | Narrative & systems design, Dead Ridge campaign design |
+| [RIDGE_MANUAL.md](RIDGE_MANUAL.md) | Dead Ridge quick reference |
+
+---
+
 ## File Structure
 
 ```
@@ -83,6 +110,27 @@ The hardware arcade cabinet and browser Web UI stay in perfect real-time synchro
 | — | `N` | Start a New Run (resets state) |
 | — | `M` | Toggle Audio Synthesizer (Mute / Unmute) |
 | — | Mouse Click / Touch | Click on any arcade button or consumable pack item |
+| — | `Tab` | Open / close the **tactical map** (click a node to travel) |
+| — | `1`+`2` | Combo — tactical map |
+| — | `3`+`4` | Combo — field manual (guide overlay) |
+| — | `2`+`4` / `W` | Combo / key — **weather station** (Dead Ridge) |
+| — | `2`+`3` / `M` | Combo / key — mute audio |
+| — | `1`+`4` / `5` | Combo / key — next page of stories |
+| — | `G` / `Esc` | Toggle the beginner's guide |
+| — | `3D: AUTO` button | Cycle 3D quality `AUTO → HIGH → LOW → OFF` |
+
+**Controls never drop.** Arcade keys are bound by document-level delegation and
+resynchronised every state push, plus a watchdog clears any stuck FX class — so a
+button showing a real option always answers, on screen and on the cabinet.
+
+### Dead Ridge map & field view
+
+| Action | How |
+|---|---|
+| Travel anywhere reachable | Open the map (`Tab`), **click a node** — the centre viewport becomes that place |
+| See what's open right now | Node colour: 🟩 open · 🟥 danger · ⛔ locked/blocked (hover shows the reason) · ❗ story beat |
+| Explore on arrival | **Search the Site · Stand Still & Listen · Call Out · Photograph · Return to Tower 2** |
+| Locked nodes | Explain themselves — trail not found, storm, no daylight left, or your own nerves |
 
 ---
 

@@ -121,6 +121,70 @@ const CityMap = (() => {
   let _visible = false;
   let _lastState = null;
   let _t = 0;
+  let _statuses = null;   // live availability from the backend (state.map_nodes)
+  let _hover = null;      // node id under the cursor
+
+  // Status palette — every node colour means something
+  const STY = {
+    home:    { fill: "#e58e3c", bdr: "#ff6628", text: "#1a0e04" },
+    open:    { fill: "#1e3a28", bdr: "#3a7058", text: "#c8e0d8" },
+    danger:  { fill: "#3a1a18", bdr: "#e04a3a", text: "#ffb0a0" },
+    locked:  { fill: "#141a22", bdr: "#2a3240", text: "#4a5560" },
+    blocked: { fill: "#2a1216", bdr: "#7a2a2a", text: "#c07070" },
+  };
+
+  function _statusOf(id, knownList) {
+    const s = _statuses ? _statuses.find((m) => m.id === id) : null;
+    if (s) return s;
+    return { id, status: knownList && knownList.includes(id) ? "open" : "locked", reason: "", risk: 40, beat: false };
+  }
+
+  function _hit(mx, my) {
+    if (!_lastState) return null;
+    const state = _lastState;
+    const isRidge = state.scenario === "dead_ridge";
+    const NODES = isRidge ? RIDGE_NODES : _CITY_NODES;
+    const known = isRidge ? (state.world.flags.rd_visited || [])
+                          : ((state.world || {}).known_locations || []);
+    for (const n of NODES) {
+      const p = _nodePos(n, _canvas.width, _canvas.height);
+      if (Math.abs(mx - p.x) <= 16 && Math.abs(my - p.y) <= 10) return n.id;
+    }
+    return null;
+  }
+
+  function _onMove(ev) {
+    if (!_canvas) return;
+    const r = _canvas.getBoundingClientRect();
+    const mx = (ev.clientX - r.left) * (_canvas.width / r.width);
+    const my = (ev.clientY - r.top) * (_canvas.height / r.height);
+    _hover = _hit(mx, my);
+    _canvas.style.cursor = _hover ? "pointer" : "default";
+    if (_visible && _lastState) _draw(_lastState);
+  }
+
+  function _onClick(ev) {
+    if (!_canvas) return;
+    const r = _canvas.getBoundingClientRect();
+    const mx = (ev.clientX - r.left) * (_canvas.width / r.width);
+    const my = (ev.clientY - r.top) * (_canvas.height / r.height);
+    const id = _hit(mx, my);
+    if (!id) return;
+    const st = _statusOf(id, []);
+    const isRidge = _lastState && _lastState.scenario === "dead_ridge";
+    if (!isRidge) {
+      // Classic runs: the map is intel — the scavenge menu is how you move.
+      if (typeof comboFlash === "function") comboFlash(`📍 ${id.toUpperCase()} — pick it from SCAVENGE`);
+      return;
+    }
+    if (st.status === "locked" || st.status === "blocked") {
+      if (typeof comboFlash === "function") comboFlash(`⛔ ${id.toUpperCase()}: ${st.reason || "no route"}`);
+      return;
+    }
+    if (window.socket) window.socket.send({ action: "goto", node: id });
+    if (typeof comboFlash === "function") comboFlash(`🚶 TRAVELLING — ${id.toUpperCase()}`);
+    CityMap.hide();
+  }
 
   function _nodePos(node, W, H) {
     return { x: node.x * W, y: node.y * H };
@@ -135,11 +199,16 @@ const CityMap = (() => {
     const isRidge = !!(state && state.scenario === "dead_ridge");
     const NODES = isRidge ? RIDGE_NODES : _CITY_NODES;
     const ROADS = isRidge ? RIDGE_ROADS : _CITY_ROADS;
-    const TITLE = isRidge ? "🌲  DEAD RIDGE OVERWORLD  🌲" : "⚠  CITY RECONNAISSANCE MAP  ⚠";
+    const TITLE = isRidge ? "🌲  DEAD RIDGE OVERWORLD — CLICK A NODE TO TRAVEL  🌲" : "⚠  CITY RECONNAISSANCE MAP  ⚠";
     const known = isRidge
       ? (state.world.flags.rd_visited || [])
       : (state && state.world && state.world.known_locations) || [];
     const current = (state && state.world && state.world.location) || "Home Base";
+    _statuses = isRidge ? (state.map_nodes || null) : null;
+    // Canvas drawing space (this was the bug that kept the map blank:
+    // W/H were referenced but never declared in this scope)
+    const W = _canvas.width;
+    const H = _canvas.height;
     _t++;
 
     // Background
@@ -166,7 +235,11 @@ const CityMap = (() => {
     _ctx.fillStyle = C.text;
     _ctx.font = "7px monospace";
     _ctx.textAlign = "right";
-    _ctx.fillText(`LOCATIONS: ${known.length}/${NODES.length}`, W - 6, 12);
+    // Day/weather live in the footer so the title can never collide with them
+    if (!isRidge) {
+      _ctx.fillText(`LOCATIONS: ${known.length}/${NODES.length}`, W - 6, 12);
+    }
+    _ctx.textAlign = "center";
 
     // Roads (resolved from the active map set)
     ROADS.forEach(([a, b]) => {
@@ -191,14 +264,19 @@ const CityMap = (() => {
       const pos = _nodePos(node, W, H);
       const isKnown = _isKnown(node.id, known);
       const isCurrent = node.id === current;
+      const st = _statusOf(node.id, known);
+      const sty = STY[st.status] || STY.locked;
+      const visible = isKnown || isCurrent || st.status === "open" || st.status === "home";
+      const isHover = _hover === node.id;
 
-      if (isCurrent) {
-        // Pulsing glow halo
+      if (isCurrent || st.status === "danger") {
+        // Pulsing halo — amber for you, red for a place that is hot right now
         const pulse = 0.5 + 0.5 * Math.sin(_t * 0.18);
         const gRadius = 10 + pulse * 4;
+        const base = isCurrent ? "229,142,60" : "224,74,58";
         const grad = _ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, gRadius);
-        grad.addColorStop(0, `rgba(229,142,60,${0.3 + pulse * 0.15})`);
-        grad.addColorStop(1, "rgba(229,142,60,0)");
+        grad.addColorStop(0, `rgba(${base},${0.3 + pulse * 0.18})`);
+        grad.addColorStop(1, `rgba(${base},0)`);
         _ctx.fillStyle = grad;
         _ctx.beginPath();
         _ctx.arc(pos.x, pos.y, gRadius, 0, Math.PI * 2);
@@ -210,26 +288,41 @@ const CityMap = (() => {
       const bx = pos.x - bw / 2;
       const by = pos.y - bh / 2;
 
-      _ctx.fillStyle = isCurrent ? C.current : isKnown ? C.known : C.unknown;
+      _ctx.fillStyle = sty.fill;
       _ctx.fillRect(bx, by, bw, bh);
-      _ctx.strokeStyle = isCurrent ? C.currentBdr : isKnown ? C.knownBdr : C.unknownBdr;
-      _ctx.lineWidth = isCurrent ? 1.5 : 1;
+      _ctx.strokeStyle = isHover ? "#fff" : sty.bdr;
+      _ctx.lineWidth = isCurrent || isHover ? 1.5 : 1;
       _ctx.strokeRect(bx, by, bw, bh);
 
       // Label
-      if (isKnown || isCurrent) {
-        // Short label (first word or abbreviation)
+      if (visible) {
         const label = _shortLabel(node.id);
-        _ctx.fillStyle = isCurrent ? "#fff" : C.textBright;
+        _ctx.fillStyle = sty.text;
         _ctx.font = isCurrent ? "bold 6px monospace" : "6px monospace";
         _ctx.textAlign = "center";
         _ctx.fillText(label, pos.x, pos.y + 2.5);
       } else {
-        // Unknown: show ???
         _ctx.fillStyle = C.textUnk;
         _ctx.font = "6px monospace";
         _ctx.textAlign = "center";
         _ctx.fillText("???", pos.x, pos.y + 2.5);
+      }
+
+      // Story beat waiting here
+      if (st.beat) {
+        _ctx.fillStyle = "#ffd166";
+        _ctx.font = "bold 8px monospace";
+        _ctx.textAlign = "left";
+        _ctx.fillText("!", bx + bw + 2, by + 4);
+      }
+      // No daylight / no route marker
+      if (st.status === "locked" || st.status === "blocked") {
+        _ctx.strokeStyle = "rgba(200,90,90,0.7)";
+        _ctx.lineWidth = 1;
+        _ctx.beginPath();
+        _ctx.moveTo(bx + 4, by + 3); _ctx.lineTo(bx + bw - 4, by + bh - 3);
+        _ctx.moveTo(bx + bw - 4, by + 3); _ctx.lineTo(bx + 4, by + bh - 3);
+        _ctx.stroke();
       }
     });
 
@@ -249,6 +342,35 @@ const CityMap = (() => {
     _ctx.fillStyle = C.textBright;
     _ctx.font = "7px monospace";
     _ctx.fillText(current.toUpperCase(), 90, H - 5);
+
+    // Bottom legend: status of the place under your cursor, else campaign clock
+    let footer = "";
+    if (_hover && isRidge) {
+      const st = _statusOf(_hover, known);
+      const tag = { open: "OPEN", danger: "⚠ DANGER", locked: "LOCKED", blocked: "BLOCKED", home: "BASE" }[st.status] || "";
+      footer = `${_hover.toUpperCase()} · ${tag} · RISK ${st.risk || 0}% — ${st.reason || st.beat_note || st.blurb || "click to travel"}`;
+    } else if (isRidge) {
+      footer = `DAY ${state.world.day}/30 · ${(state.world.weather || "clear").toUpperCase()} · ` +
+               `${state.world.is_night ? "NIGHT" : "DAY"} · ${known.length}/${NODES.length} KNOWN`;
+    }
+    if (footer) {
+      // Left legend is drawn at fixed x=90 for the location name — measure it
+      // the same way it was drawn so the two can never touch.
+      _ctx.font = "bold 8px monospace";
+      const labelW = _ctx.measureText("▶ YOU ARE HERE:").width;
+      _ctx.font = "7px monospace";
+      const locW = _ctx.measureText(current.toUpperCase()).width;
+      const leftEnd = Math.max(6 + labelW + 6, 90 + locW) + 10;
+      const budget = Math.max(40, W - 6 - leftEnd);
+      let line = footer;
+      while (line.length > 4 && _ctx.measureText(line).width > budget) line = line.slice(0, -2);
+      if (line !== footer) line = line.slice(0, -1) + "…";
+      _ctx.fillStyle = _hover ? "#ffd166" : C.text;
+      _ctx.font = "7px monospace";
+      _ctx.textAlign = "right";
+      _ctx.fillText(line, W - 6, H - 5);
+      _ctx.textAlign = "left";
+    }
   }
 
   function _shortLabel(id) {
@@ -312,6 +434,9 @@ const CityMap = (() => {
     canvas.width = 320;
     canvas.height = 210;
     canvas.style.cssText = "display:block;image-rendering:pixelated;";
+    canvas.addEventListener("mousemove", _onMove);
+    canvas.addEventListener("mouseleave", () => { _hover = null; if (_visible && _lastState) _draw(_lastState); });
+    canvas.addEventListener("click", _onClick);
 
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "✕ CLOSE MAP  [Tab]";

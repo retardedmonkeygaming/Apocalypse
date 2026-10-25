@@ -220,15 +220,33 @@ function updateUI(state) {
 
     Object.keys(btnMap).forEach((k) => {
       const btn = document.getElementById(btnMap[k]);
-      const c = (ev.choices || []).find((x) => x.key === k);
       const textSpan = btn.querySelector(".btn-text");
+      const c = (ev.choices || []).find((x) => x.key === k);
       if (c) {
         textSpan.textContent = c.label;
+        // A live option is ALWAYS clickable — the disabled flag only ever
+        // mirrors "no option on this key" or "run is over".
         btn.disabled = !!state.game_over && !(c.effect && c.effect.restart);
+        btn.dataset.live = "1";
       } else {
         textSpan.textContent = "—";
         btn.disabled = true;
+        delete btn.dataset.live;
       }
+      btn.classList.remove("pressed");
+    });
+  } else if (state.game_over) {
+    // Ending screen: the four keys are spent, CONFIRM still restarts.
+    ["btn-red", "btn-blue", "btn-green", "btn-yellow"].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn) { btn.querySelector(".btn-text").textContent = "—"; btn.disabled = true; delete btn.dataset.live; }
+    });
+  }
+  // Never let a stale disabled flag survive into a state that has choices.
+  if (ev && !state.game_over) {
+    ["btn-red", "btn-blue", "btn-green", "btn-yellow"].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn && btn.dataset.live === "1") btn.disabled = false;
     });
   }
 
@@ -378,6 +396,14 @@ function updateUI(state) {
   // 14. UPDATE CITY MAP
   if (window.CityMap) {
     CityMap.update(state);
+    // The map menu announces itself: slide the tactical map open once
+    if (state.last_action === "__open_map__") {
+      const nonce = (state.current_event || {}).nonce;
+      if (_mapOpenedFor !== nonce) {
+        _mapOpenedFor = nonce;
+        CityMap.show();
+      }
+    }
   }
 
   // 14b. FORESTOS LAPTOP OVERLAY & WEATHER STATION (Dead Ridge)
@@ -422,6 +448,36 @@ function jumpscareFx() {
 
 let _toastLastId = "";
 let _toastTimer = null;
+let _mapOpenedFor = null;
+
+// ── CONTROL WATCHDOG ──────────────────────────────────────────────────────
+// Guarantees the arcade keys can never get stuck: FX classes are cleared once
+// their animation is over, and any button carrying a real option is forced
+// back to clickable. Runs on a timer, independent of render traffic.
+setInterval(() => {
+  const screen = document.getElementById("crt-screen");
+  if (screen && !_scaring) screen.classList.remove("blackout", "scare-flash");
+  const flash = document.getElementById("fx-flash");
+  if (flash && !_scaring) flash.classList.remove("scare");
+
+  document.querySelectorAll(".arcade-btn").forEach((b) => {
+    const t = b.querySelector(".btn-text");
+    const label = t ? t.textContent.trim() : "";
+    const over = window.__rdState && window.__rdState.game_over;
+    if (label && label !== "…" && label !== "—" && !over) {
+      b.disabled = false;
+      delete b.dataset.stuck;
+    }
+    b.classList.remove("pressed");
+  });
+
+  // Overlays must never sit on top of the screen they are supposed to frame
+  const guide = document.getElementById("guide-overlay");
+  if (guide && guide.classList.contains("visible") && guide.style.display === "none") {
+    guide.classList.remove("visible");
+    guide.classList.add("hidden");
+  }
+}, 1500);
 
 function showToast(msg) {
   const toast = document.getElementById("toast");

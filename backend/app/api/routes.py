@@ -17,7 +17,7 @@ def set_engine(e: GameEngine):
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     if engine:
-        await websocket.send_json(engine.state.to_dict())
+        await websocket.send_json(engine.state_payload())
     try:
         while True:
             data = await websocket.receive_json()
@@ -27,6 +27,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if action == "choice":
                 await engine.handle_choice(data.get("key"))
+            elif action == "goto":
+                await engine.handle_goto(data.get("node"))
             elif action in ("medkit", "confirm"):
                 await engine.handle_confirm()
             elif action == "new_game":

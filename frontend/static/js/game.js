@@ -102,14 +102,17 @@ document.addEventListener("keyup", (e) => {
   if ("1234".includes(e.key)) _held.delete(e.key);
 });
 
-// 1. ARCADE BUTTON CLICKS
-document.querySelectorAll(".arcade-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    if (!btn.disabled) {
-      press(btn.dataset.key);
-    }
-  });
-});
+// 1. ARCADE BUTTON CLICKS — delegated at document level so a button that is
+// re-rendered, re-enabled or moved can never end up without a handler.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target && ev.target.closest ? ev.target.closest(".arcade-btn") : null;
+  if (!btn) return;
+  const span = btn.querySelector(".btn-text");
+  const label = span ? span.textContent.trim() : "";
+  // "—" means this key genuinely carries no option right now.
+  if (label === "—" || label === "") return;
+  press(btn.dataset.key);
+}, true);
 
 // 2. FOOTER UTILITIES: NEW RUN, MUTE, SCANLINES & MAP
 document.getElementById("btn-new-game").addEventListener("click", () => {
