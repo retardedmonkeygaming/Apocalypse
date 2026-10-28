@@ -34,6 +34,7 @@ const SFX = {
       this.ambientGain.gain.value = 0;
     }
     if (this.muted) this._setBed(0);
+    if (this.muted) this._windKill();
     return this.muted;
   },
 
@@ -62,6 +63,18 @@ const SFX = {
     const awareness = p.humanity || 0;
     const night = !!w.is_night || !!(w.flags && w.flags.rd_eclipse);
     this.ridgeAmbience(sanity, night);
+
+    // FALSE CALM: the ridge holds its breath — every sustained layer dies
+    // and stays dead until dawn. Silence is the event.
+    const flags = w.flags || {};
+    const calm = flags.rd_false_calm_day != null && Number(flags.rd_false_calm_day) === (w.day || 0);
+    if (calm) {
+      this._setBed(0);
+      if (this._hbTimer) { clearInterval(this._hbTimer); this._hbTimer = null; }
+      if (this._scTimer) { clearInterval(this._scTimer); this._scTimer = null; }
+      if (this._growl) this._growl.gg.gain.setTargetAtTime(0, this.ctx.currentTime, 0.5);
+      return; // wind layer is hushed by ambientTick as well
+    }
 
     // 1. Heartbeat / low pulse when the mind frays
     if (sanity < 45 && !this._hbTimer) {
@@ -100,9 +113,84 @@ const SFX = {
   },
 
   _stopHorror() {
-    ["_hbTimer", "_scTimer", "_whTimer"].forEach((k) => {
+    ["_hbTimer", "_scTimer", "_whTimer", "_breathTimer"].forEach((k) => {
       if (this[k]) { clearInterval(this[k]); this[k] = null; }
     });
+  },
+
+  // ── AMBIENT WIND BED — runs in EVERY mode ──────────────────────
+  // Low wind that swells with fog, storm and dread, and dies completely
+  // during a false calm. Also seeds the companion-breath layer at night.
+  ambientTick(state) {
+    if (this.muted || !state) { this._windKill(); return; }
+    const c = this.ensure();
+    if (!c) return;
+    const w = state.world || {};
+    const p = state.player || {};
+    const flags = w.flags || {};
+    const weather = (w.weather || "clear").toLowerCase();
+    const night = !!w.is_night;
+    const sanity = p.morale != null ? p.morale : 100;
+    const calm = flags.rd_false_calm_day != null && Number(flags.rd_false_calm_day) === (w.day || 0);
+
+    if (!this._wind) {
+      const src = c.createBufferSource();
+      src.buffer = this._noiseBuf(); src.loop = true;
+      const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 380; lp.Q.value = 0.4;
+      const g = c.createGain(); g.gain.value = 0;
+      const lfo = c.createOscillator(); lfo.frequency.value = 0.07;   // slow gusts
+      const lg = c.createGain(); lg.gain.value = 0.010;
+      lfo.connect(lg); lg.connect(g.gain);
+      src.connect(lp); lp.connect(g); g.connect(c.destination);
+      src.start(); lfo.start();
+      this._wind = { src, g, lp };
+    }
+    let base = 0.018 + (night ? 0.010 : 0) + (weather === "fog" ? 0.009 : 0) +
+               ((weather === "storm" || weather === "rain") ? 0.015 : 0);
+    if (sanity < 50) base += (50 - sanity) * 0.0006;
+    if (calm) base = 0;                     // nothing moves, nothing breathes
+    this._wind.g.gain.setTargetAtTime(base, c.currentTime, 2.0);
+    this._wind.lp.frequency.setTargetAtTime(calm ? 150 : 380 + (weather === "storm" ? 240 : 0), c.currentTime, 2.0);
+
+    // Companion breathing at night — occasionally answered a beat late
+    const wantBreath = state.scenario === "dead_ridge" && night && (sanity < 65 || (p.humanity || 0) >= 35);
+    if (wantBreath && !this._breathTimer) {
+      this._breathTimer = setInterval(() => {
+        if (Math.random() < 0.55) this._breathBurst(Math.random() < 0.35);
+      }, 21000 + Math.random() * 16000);
+    } else if (!wantBreath && this._breathTimer) {
+      clearInterval(this._breathTimer); this._breathTimer = null;
+    }
+  },
+
+  _breathBurst(answered) {
+    const c = this.ensure();
+    if (!c) return;
+    const exhale = (delay) => {
+      try {
+        const src = c.createBufferSource();
+        src.buffer = this._noiseBuf();
+        const bp = c.createBiquadFilter();
+        bp.type = "bandpass"; bp.Q.value = 2.2;
+        bp.frequency.value = 520 + Math.random() * 320;
+        const g = c.createGain();
+        const t0 = c.currentTime + delay;
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.020, t0 + 0.22);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.85);
+        src.connect(bp); bp.connect(g); g.connect(c.destination);
+        src.start(t0); src.stop(t0 + 0.95);
+      } catch (e) { /* audio interrupted */ }
+    };
+    exhale(0);
+    if (answered) exhale(1.6 + Math.random() * 1.2);   // …who was that
+  },
+
+  _windKill() {
+    if (this._wind && this.ctx) {
+      this._wind.g.gain.setTargetAtTime(0, this.ctx.currentTime, 1.0);
+    }
+    if (this._breathTimer) { clearInterval(this._breathTimer); this._breathTimer = null; }
   },
 
   _scratchBurst() {

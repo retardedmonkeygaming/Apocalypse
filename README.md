@@ -21,15 +21,17 @@ You wake in a boarded apartment room in a fallen city. Channel 7 emergency radio
 
 ## Screenshots
 
-> Replace the placeholders below with real captures (1280×800, CRT filter on).
-> Drop them in `docs/screenshots/` — the paths are already wired up.
+Real captures from the running game, in [`screenshots/`](screenshots/).
 
 | | |
 |---|---|
-| ![Home base hub](docs/screenshots/01-hub.png)<br>*Classic run — Home Base hub, 7-segment mirror showing health* | ![Dead Ridge watch cabin](docs/screenshots/02-ridge-cabin.png)<br>*Dead Ridge — Fire-Tower 2 at dusk, crew check-in* |
-| ![Tactical map](docs/screenshots/03-map.png)<br>*Tactical map — live node status, click to travel* | ![Field view](docs/screenshots/04-field.png)<br>*Field view — on location at the Copperhead Bridge* |
-| ![Living Window](docs/screenshots/05-window.png)<br>*Living Window at low sanity — the glass starts lying* | ![3D tower](docs/screenshots/06-3d-tower.png)<br>*3D mode — WebGL lookout interior, HIGH tier* |
-| ![ForestOS laptop](docs/screenshots/07-forestos.png)<br>*ForestOS — inbox, barometric calibration, log engine* | ![Weather station](docs/screenshots/08-weather.png)<br>*Weather station overlay (combo `2+4` / key `W`)* |
+| ![Story select](screenshots/01-story-select.png)<br>*Survivor Files — story select, page 1* | ![Story select page 2](screenshots/02-story-select-page2.png)<br>*Page 2 — The Watchers of Dead Ridge* |
+| ![Dead Ridge hub](screenshots/03-ridge-hub.png)<br>*Dead Ridge — Fire-Tower 2 watch cabin hub* | ![Watch the windows](screenshots/04-watch-the-windows.png)<br>*Watch the windows — night watch action* |
+| ![Living Window focus](screenshots/05-living-window-focus.png)<br>*Living Window focus — false-calm beat, crew observation fires live* | ![Crew check-in](screenshots/06-crew-check-in.png)<br>*Crew check-in — Mark, Chloe and Sam under pressure* |
+| ![ForestOS laptop](screenshots/07-forestos-laptop.png)<br>*ForestOS — inbox, calibration, log engine* | ![Weather radar](screenshots/08-weather-radar.png)<br>*Weather radar with barometric anomaly* |
+| ![Read in place](screenshots/09-site-read.png)<br>*Recovered log page read in place at Fire-Tower 1* | ![Expedition map](screenshots/10-expedition-map.png)<br>*Tactical map — live node status, click to travel* |
+| ![Field view](screenshots/11-field-view.png)<br>*Field view — search, listen, examine, call out, return* | ![Classic hub](screenshots/12-classic-hub.png)<br>*Classic run — Home Base hub with 3D interior* |
+| ![Classic streets](screenshots/13-classic-streets.png)<br>*Classic run — street-level 3D set with threats* | ![Documents reader](screenshots/14-documents-reader.png)<br>*Documents reader — Pendelton's log entry in full* |
 
 ---
 

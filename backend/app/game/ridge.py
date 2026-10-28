@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from backend.app.game.ridge_cast import (
     CREW_LINES, FOCUS_SIGHTINGS, NEW_ENDINGS, WINDOW_LIES, WINDOW_TRUE,
+    SUBTLE_LIES, FALSE_CALM, INCONSISTENCIES, crew_observation,
     WORLD_EVENTS, crew_line, merge_npcs,
 )
 
@@ -200,6 +201,17 @@ DOCS: Dict[str, Dict[str, str]] = {
             "embedded in the limestone: no vocal cords, no ocular sockets, an elongated torso capable of "
             "sustained compression. The skeleton was warm. All crew files were sealed after the recovery "
             "vehicle refused to start for eleven consecutive hours."
+        ),
+    },
+    "voss_notes": {
+        "name": "Dr. E. Voss — Field Notes (loose pages, no binding)",
+        "text": (
+            "DAY 9? The recorder keeps playing sections of this conversation back before I have them. "
+            "Hypothesis: the ridge is not acoustic — it is MIRROR-ACOUSTIC. It only ever answers with "
+            "what we gave it. Everything you hear out there is ours, rearranged. Day 12: I stopped "
+            "writing my name at the top of the pages. It started signing them for me. Correctly. "
+            "Cursive. Day ?: If you are reading this, it has already learned whichever of us found it. "
+            "Do not read this aloud. Do not let anyone read it aloud near the vents."
         ),
     },
 }
@@ -467,6 +479,10 @@ class RidgeMode:
             return "C"
         if self.sanity() <= 30:
             return "S"
+        if self.F.get("rd_false_calm_day") == s.world.day:
+            return "c"   # the calm is the most dangerous readout we have
+        if s.player.humanity >= 70 and s.world.is_night:
+            return "d"   # it knows where you are and the sun can't help
         if self.F.get("rd_siege_night"):
             return "d"
         # The display itself glitches at low sanity — wrong char, briefly
@@ -509,7 +525,7 @@ class RidgeMode:
             "docs_read": self.docs_read,
             "focus": self.focus, "crew": self.crew_menu, "talk_crew": self.talk_crew,
             "goto": self.goto, "field": self.field, "map": self.expedition,
-            "map_open": self.map_open,
+            "map_open": self.map_open, "site_read": self.site_read,
         }
         fn = handlers.get(action)
         self._seg_override = None  # each fresh action re-derives the display
@@ -517,7 +533,32 @@ class RidgeMode:
             out = fn(effect)
             if asyncio.iscoroutine(out):
                 await out
+        await self._atmos_tick()
         await self._flush_end()
+
+    async def _atmos_tick(self):
+        """Physical cabinet feedback for the room's mood — at most once a day
+        per event, so the buzzer stays frightening instead of becoming noise."""
+        s, F = self.s, self.F
+        danger = (
+            (s.player.humanity >= 60 and s.world.is_night)
+            or bool(F.get("rd_siege_night"))
+            or s.player.morale <= 25
+        )
+        try:
+            if danger and F.get("rd_buzz_day") != s.world.day:
+                F["rd_buzz_day"] = s.world.day
+                # one sub-audible thump — felt through the cabinet, not heard
+                await self.e.buzzer.tone(64, 0.3, 0.35)
+            elif (F.get("rd_false_calm_day") == s.world.day
+                  and F.get("rd_calm_buzz_day") != s.world.day):
+                F["rd_calm_buzz_day"] = s.world.day
+                # dry relay-tick, twice — something acknowledged you
+                await self.e.buzzer.tone(1400, 0.03, 0.22)
+                await asyncio.sleep(0.14)
+                await self.e.buzzer.tone(1400, 0.03, 0.22)
+        except Exception:
+            pass
 
     async def _flush_end(self):
         """Run a death that was armed during a synchronous sanity update."""
@@ -571,6 +612,7 @@ class RidgeMode:
         b = e.get("beat")
         if b == "tower3":
             F["rd_tower3_seen"] = True
+            F["rd_pending_obs"] = "morse"
             choices = [
                 {"label": "Send Sam to Investigate", "effect": {"ridge": "resolve", "res": "sam_sent"}},
                 {"label": "Filter Out the Flashes", "effect": {"ridge": "resolve", "res": "ignore_t3"}},
@@ -638,35 +680,108 @@ class RidgeMode:
 
         sanity = self.sanity()
         stage = self._stage()
-        if sanity >= 50:
-            sight = random.choice(FOCUS_SIGHTINGS[stage])
-            self._aware(4, f"── BINOCULARS ({stage.upper()}) ──")
-            self.s.log.append(sight)
-            self._san(-2)
-            self.s.fx = "eerie" if stage != "early" else ""
-            title = "LIVING WINDOW — FOCUS LOCKED"
+        aware = self.s.player.humanity
+        roll = random.random()
+
+        # The window's honesty is a function of your mind and how much the
+        # ridge already knows you. At medium sanity it gets one detail wrong
+        # and dares you to call it out. Below 45 it is on their side. Above
+        # 75 it mostly tells the truth — except during a false calm, when
+        # everything being fine is the scariest report it can file.
+        calm_p = 0.14 + (0.10 if aware >= 50 else 0.0) + (0.06 if sanity >= 65 else 0.0)
+
+        if sanity < 45:
+            # ACTIVE GASLIGHTING — and sometimes a cruel little mercy: one
+            # genuine sighting so you can never be sure which was which.
+            if roll < 0.14:
+                self._true_sighting(stage)
+                title = "LIVING WINDOW — LOCKED"
+            elif roll < 0.14 + calm_p:
+                self._false_calm()
+                title = "LIVING WINDOW — TOO QUIET"
+            else:
+                lie = random.choice(WINDOW_LIES)
+                self._san(lie.get("san", -6), "── BINOCULARS — the glass lies to you ──")
+                self._aware(lie.get("aware", 4), lie["text"])
+                if lie.get("flag"):
+                    F[lie["flag"]] = True
+                F["rd_pending_obs"] = "window_lie"
+                self._stress_all(2)
+                self.s.fx = "eerie"
+                title = "LIVING WINDOW — PERCEPTION FRACTURE"
+                # The reveal: the room contradicts the glass. This is the
+                # gaslight — you are never allowed to settle on what was real.
+                if random.random() < 0.45:
+                    reveal = random.choice([
+                        "You spin around. They are all still here. They have always been still here.",
+                        "You check the log. The line you were sure you just wrote is not in it, and a different one is.",
+                        "Mark asks who you are talking to. The window. You were talking to the window. You are sure of it. You are almost sure of it.",
+                        "The pane is cold and dry. There is no breath on it. There never was. Your sleeve is soaked from a fog that isn't there.",
+                    ])
+                    self.s.log.append(reveal)
+                # Sometimes the lie shows you something that looks right at the glass
+                if random.random() < 0.25:
+                    self.s.log.append("Something slams the pane. The glass is intact. It isn't.")
+                    self.s.fx = "scare"
+                    self._san(-4)
+                    self._aware(6)
+                    self._seg("d")
+        elif sanity < 75:
+            subtle_p = 0.30 if sanity < 60 else 0.16
+            if roll < subtle_p:
+                self._subtle_lie()
+                title = "LIVING WINDOW — SOMETHING IS OFF"
+            elif roll < subtle_p + calm_p:
+                self._false_calm()
+                title = "LIVING WINDOW — TOO QUIET"
+            else:
+                self._true_sighting(stage)
+                title = "LIVING WINDOW — FOCUS LOCKED"
         else:
-            lie = random.choice(WINDOW_LIES)
-            self._san(lie.get("san", -6), "── BINOCULARS — the glass lies to you ──")
-            self._aware(lie.get("aware", 4), lie["text"])
-            if lie.get("flag"):
-                F[lie["flag"]] = True
-            self._stress_all(2)
-            self.s.fx = "eerie"
-            title = "LIVING WINDOW — PERCEPTION FRACTURE"
-            # Sometimes the lie shows you something that looks right at the glass
-            if random.random() < 0.30:
-                self.s.log.append("Something slams the pane. The glass is intact. It isn't.")
-                self.s.fx = "scare"
-                self._san(-4)
-                self._aware(6)
-                self._seg("d")
+            if roll < calm_p:
+                self._false_calm()
+                title = "LIVING WINDOW — TOO QUIET"
+            elif roll < calm_p + 0.08:
+                self._subtle_lie()
+                title = "LIVING WINDOW — SOMETHING IS OFF"
+            else:
+                self._true_sighting(stage)
+                title = "LIVING WINDOW — FOCUS LOCKED"
 
         choices = [{"label": "Lower the Binoculars", "effect": {"ridge": "hub"}}]
         if sanity < 50:
             choices.insert(0, {"label": "Look Again (It Wasn't Real)", "effect": {"ridge": "beat", "beat": "count"}})
         self._show(title, self.s.log[-1], choices, "ridge_tower", "BACK", "event")
         self._seg("U")
+
+    def _true_sighting(self, stage: str):
+        sight = random.choice(FOCUS_SIGHTINGS[stage])
+        self._aware(4, f"── BINOCULARS ({stage.upper()}) ──")
+        self.s.log.append(sight)
+        self._san(-2)
+        self.s.fx = "eerie" if stage != "early" else ""
+
+    def _subtle_lie(self):
+        lie = random.choice(SUBTLE_LIES)
+        self._san(lie.get("san", -3), "── BINOCULARS — one detail is wrong ──")
+        self._aware(lie.get("aware", 3), lie["text"])
+        if lie.get("flag"):
+            self.F[lie["flag"]] = True
+        self.F["rd_pending_obs"] = "window_lie"
+        self.s.fx = "eerie"
+
+    def _false_calm(self):
+        """The window insists everything is fine. The world goes dead still
+        for the rest of the day — even the 3D trees stop moving."""
+        calm = random.choice(FALSE_CALM)
+        self._san(calm.get("san", -4), "── BINOCULARS — the calm is a performance ──")
+        self._aware(calm.get("aware", 4), calm["text"])
+        if calm.get("flag"):
+            self.F[calm["flag"]] = True
+        self.F["rd_false_calm_day"] = self.s.world.day
+        self.F["rd_calm_count"] = int(self.F.get("rd_calm_count", 0)) + 1
+        self.F["rd_pending_obs"] = "false_calm"
+        self.s.fx = "eerie"
 
     async def crew_menu(self, _e=None):
         """Living dialogue: each companion answers from their own head."""
@@ -690,6 +805,26 @@ class RidgeMode:
             if len(lines) >= 3:
                 break
         F["rd_recent"] = recent
+        # THEY SAW IT TOO — someone comments on what just happened
+        present = [p["id"] for p in party]
+        pend = F.pop("rd_pending_obs", None)
+        obs = crew_observation(pend, present)
+        if obs:
+            short = next((p["short"] for p in party if p["id"] == obs["who"]), obs["who"])
+            lines.insert(0, f"{short}: \"{obs['line']}\"")
+        elif self.sanity() < 78 and F.get("rd_incons_day") != s.world.day and random.random() < 0.20:
+            # Small verifiable lies — the pressure is showing in the cracks
+            seen = F.setdefault("rd_incons_seen", [])
+            cand = [c for c in INCONSISTENCIES
+                    if c["who"] in present and c["id"] not in seen
+                    and (not c.get("needs") or F.get(c["needs"]))]
+            if cand:
+                c = random.choice(cand)
+                seen.append(c["id"])
+                F["rd_incons_day"] = s.world.day
+                short = next((p["short"] for p in party if p["id"] == c["who"]), c["who"])
+                lines.append(f"{short}: \"{c['line']}\"")
+                lines.append(f"  — {c['check']}")
         if not lines:
             lines = ["The cabin is quiet except for the radio's floor of static."]
         choices.append({"label": "Back to the Desk", "effect": {"ridge": "hub"}})
@@ -781,6 +916,7 @@ class RidgeMode:
         choices = [
             {"label": "Mark: Analyze the Anomaly", "effect": {"ridge": "resolve", "res": "radar_mark"}},
             {"label": "Toggle Monitor Backlight", "effect": {"ridge": "resolve", "res": "radar_off"}},
+            {"label": "Open Documents", "effect": {"ridge": "documents"}},
             {"label": "Back", "effect": {"ridge": "laptop"}},
         ]
         self._show("WEATHERRADAR — SENSOR GRID", body, choices, "ridge_radar", "BACK", "event")
@@ -794,7 +930,12 @@ class RidgeMode:
 
     async def _docs_page(self, page: int):
         s, F = self.s, self.F
-        docs = F.get("rd_docs", [])
+        docs = list(F.get("rd_docs", []))
+        # Field-carried documents (Voss's notes, etc.) live in the inventory
+        # but belong in the reader like any other recovered file.
+        for it in s.player.inventory:
+            if it in DOCS and it not in docs:
+                docs.append(it)
         if not docs:
             self.s.log.append("No documents recovered yet. The ridge hides its files well.")
             await self.laptop()
@@ -979,6 +1120,7 @@ class RidgeMode:
         # THE PALE VOICE / ARTHUR'S MASK — early echoes before full hijacks
         if (F.get("rd_learn", 0) >= 30 or day >= 22) and not F.get(f"rd_hijack_{ch}") and random.random() < 0.22:
             band = random.choice(CREW_LINES["pale"]["mid"])
+            F["rd_pending_obs"] = "radio_hijack"
             self._san(-8, "Something old clears its throat on the band — it wears Arthur Pendelton's cadence.")
             self._aware(6)
             self._show(f"CHANNEL {ch} — ARTHUR'S ECHO",
@@ -998,6 +1140,7 @@ class RidgeMode:
         hijack_chance = 0.4 if hijacked_any else 1.0
         if F.get("rd_learn", 0) >= 55 and not F.get(f"rd_hijack_{ch}") and random.random() < hijack_chance:
             F[f"rd_hijack_{ch}"] = True
+            F["rd_pending_obs"] = "radio_hijack"
             who = random.choice(["mark", "chloe", "sam"])
             npc = s.world.npcs.get(who, {})
             if npc.get("alive"):
@@ -1175,22 +1318,32 @@ class RidgeMode:
             text += "\n\n" + extra
         if visited_twice:
             text += "\n\nYou have been here before. The place has changed since — or you have."
+        # TRACES: sites you worked remember you, and so does something else
+        marked = int(F.get("rd_marks", {}).get(node, 0))
+        if marked and visited_twice:
+            text += ("\n\nYour chalk mark is still on the stone — and someone has drawn a second line "
+                     "beside it in the same hand, extending the stroke toward the tower.")
         choices = [
             {"label": "Search the Site", "effect": {"ridge": "field", "verb": "search"}},
             {"label": "Stand Still & Listen", "effect": {"ridge": "field", "verb": "listen"}},
+            {"label": "Examine the Ground", "effect": {"ridge": "field", "verb": "examine"}},
             {"label": "Call Out", "effect": {"ridge": "field", "verb": "call"}},
-            {"label": "Return to Tower 2", "effect": {"ridge": "field", "verb": "return"}},
         ]
         # Contextual verbs: only appear when the situation actually offers them.
-        # CONFIRM is always RETURN, so going home is never more than one press.
+        # RETURN is always the last option and always CONFIRM, so going home
+        # is never more than one press — nothing may ever replace it.
         night = s.world.is_night
         weather = (s.world.weather or "").lower()
         if weather in ("fog", "storm"):
             choices[1] = {"label": "Listen Through the Weather",
                           "effect": {"ridge": "field", "verb": "listen"}}
         if self.sanity() >= 35 and not night:
-            choices[3] = {"label": "Photograph the Ground",
-                          "effect": {"ridge": "field", "verb": "photo"}}
+            choices.append({"label": "Photograph the Ground",
+                            "effect": {"ridge": "field", "verb": "photo"}})
+        if node in ("The Northern Ravine", "Limestone Sinkhole", "The Copperhead Bridge"):
+            choices.append({"label": "Climb for the Long View",
+                            "effect": {"ridge": "field", "verb": "climb"}})
+        choices.append({"label": "Return to Tower 2", "effect": {"ridge": "field", "verb": "return"}})
         self._show(f"ON LOCATION — {node.upper()}", text, choices,
                    NODE_SCENE.get(node, "ridge_forest"), "RETURN", "event")
         self._seg("M")
@@ -1204,7 +1357,87 @@ class RidgeMode:
 
         if verb == "return":
             s.log.append(f"You leave {node} behind. The ladder up is a straight line to safety.")
+            # WRONG HOMECOMING — the tower is almost what you left. At most
+            # once a day, and never during a false calm (that IS the event).
+            chance = 0.10 + (0.12 if night else 0.0) + (0.10 if self.sanity() < 55 else 0.0) + (0.08 if self.s.player.humanity >= 45 else 0.0)
+            if (F.get("rd_false_calm_day") == day or F.get("rd_wrong_home_day") == day):
+                chance = 0
+            if random.random() < chance:
+                F["rd_wrong_home_day"] = day
+                F["rd_wrong_home_count"] = int(F.get("rd_wrong_home_count", 0)) + 1
+                F["rd_pending_obs"] = "wrong_home"
+                openers = [
+                    ("The stove is cold, but the mug on the rail is warm. It is your mug. You have not "
+                     "been up here since morning, and somebody has poured you a fresh one."),
+                    ("Everything is exactly where you left it — which is what you would say if someone "
+                     "had carefully put it all back."),
+                    ("Chloe says welcome back in your mother's intonation. Chloe has never heard your "
+                     "mother. She smiles until you look at her twice."),
+                    ("Your chair has been turned to face the window. You live with two other people and "
+                     "none of them sit in your chair. The cushion is still warm."),
+                    ("The logbook is open on the desk to a page you have not written yet. The handwriting "
+                     "is yours. It is detailing what you just did, one step behind you."),
+                ]
+                self._san(-3, "── You came home to something that had been practicing being your home. ──")
+                self.s.fx = "eerie"
+                self._seg("!")
+                self._show("BACK AT FIRE-TOWER 2 — SOMETHING IS OFF", random.choice(openers),
+                           [{"label": "Accept It and Move On", "effect": {"ridge": "hub"}},
+                            {"label": "Check the Room Again", "effect": {"ridge": "beat", "beat": "count"}}],
+                           "ridge_tower", "BACK", "event")
+                return
             self.hub()
+            return
+
+        if verb == "here":
+            self._field_view(node)
+            return
+
+        if verb == "examine":
+            # Reading the ground: cheap awareness, escalating dread
+            stage = self._stage()
+            reads = {
+                "early": [
+                    "Boot prints, half-filled with rain. Fresh lugs, size eleven. They go up the trail "
+                    "toward the tower and never come back down.",
+                    "Scrape marks where something heavy was dragged — then lifted. The drag resumes "
+                    "twenty feet up, in the canopy.",
+                ],
+                "mid": [
+                    "Animal tracks that stop mid-stride. Four sets, all facing the tower, all at the "
+                    "same distance from it. A honor guard for something that has not arrived yet.",
+                    "Your own boot prints from last week. They lead somewhere you have never been.",
+                ],
+                "late": [
+                    "The earth here is soft except for a perfect circle of dry ground, the width of a "
+                    "doorway, warm to the palm when you kneel. Something has been standing here nightly.",
+                    "Tracks in the mud: boot, hoof, hand, boot, hoof, hand — one line of them, all "
+                    "walking toward the tower, none walking away.",
+                ],
+            }
+            line = random.choice(reads[stage])
+            self._aware(2)
+            self._san(-2 if stage != "early" else 0, "You knelt and read the ground.")
+            s.log.append(line)
+            self._field_view(node, line)
+            return
+
+        if verb == "climb":
+            # High ground: the whole ridge at once, if you can stand it
+            if night:
+                self._san(-4, "From the rim, you watched your own tower light go out. From the rim, you watched it come back on.")
+                self._aware(5)
+                text = ("From the rim the ridge lays itself out: bridge, cabins, shaft — and Fire-Tower 2, "
+                        "a lit match behind you. The light goes out. You are still standing here. The light "
+                        "comes back on with a figure at the window that has your posture.")
+                s.fx = "eerie"
+            else:
+                self._san(2, "High ground in daylight. For a moment the map is only a map.")
+                self._aware(3)
+                text = ("From up here the world is geography again: the switchbacks, the gray thread of the "
+                        "river, Tower 3 dark on its peak. Then your eye catches the pattern you will not "
+                        "unsee — every trail on this ridge bends, slightly but definitely, toward your tower.")
+            self._field_view(node, text)
             return
 
         if verb == "search":
@@ -1260,6 +1493,7 @@ class RidgeMode:
                 else:
                     s.player.scrap += amt
                 self._san(2)
+                F.setdefault("rd_marks", {})[node] = day
                 s.log.append(f"Search at {node}: salvaged {amt} {found}.")
                 self._field_view(node, f"Working the site with the lantern low, you salvage {amt} {found}. "
                                        "Behind the fog a branch snaps in a three-beat rhythm and stops when you stop.")
@@ -1326,6 +1560,55 @@ class RidgeMode:
             return
 
         self.hub()
+
+    async def site_read(self, e: Dict[str, Any]):
+        """Open the recovered material IN PLACE — the find is readable the
+        moment you find it, not weeks later in a menu."""
+        which = str(e.get("which", ""))
+        s = self.s
+        back = [{"label": "Back to the Site", "effect": {"ridge": "field", "verb": "here"}},
+                {"label": "Back to Tower 2", "effect": {"ridge": "hub"}}]
+        if which == "t1":
+            title = "THE LOG PAGE — READ IN PLACE"
+            scene = NODE_SCENE["Fire-Tower 1"]
+            text = (
+                "The page is Pendelton's, written hard enough to emboss the next sheet:\n\n"
+                "\"Day 19. I answered the radio to be polite. It has been polite back for six hours. "
+                "Politeness is not something animals do. I checked the frequency twice. The frequency "
+                "is the frequency of my own headset, which is off, in my drawer, with the battery out.\"\n\n"
+                "Under it, smaller: \"It doesn't repeat you. It practices you. There is a difference and "
+                "I can hear it and I don't know how to unhear it.\""
+            )
+        elif which == "cassette":
+            title = "THE CASSETTE — SECOND LISTEN"
+            scene = NODE_SCENE["Ranger Station Ruins"]
+            text = (
+                "You play it again. The first thirty seconds are identical — breathing, the dog, the "
+                "polite request. Then a new sentence arrives that was not on the first play:\n\n"
+                "\"…and the one listening to this right now is standing up. Don't stand up.\"\n\n"
+                "Your hand is already off the desk. Behind you, the cellar door you left open is open "
+                "exactly one inch further than you left it."
+            )
+            s.fx = "eerie"
+            self._san(-3)
+        elif which == "incident":
+            title = "1991 INCIDENT FILE — READ IN PLACE"
+            scene = NODE_SCENE["Overturned Railcar"]
+            text = (
+                "The incident sheet, in full:\n\n"
+                "\"…recovery team reports the specimen's ribcage expanded in a pattern consistent with "
+                "speech. No lungs recovered. Cage warms to ambient +11°C on observation. Specimen was "
+                "observed to orient toward the recovery truck's radio whenever the crew used their own "
+                "names. Recommend permanent seal of ravine access and reassignment of all personnel "
+                "who spoke within the vehicle.\"\n\n"
+                "The signature block is missing. In the margin, someone wrote: \"They all came back. "
+                "That was the problem.\""
+            )
+        else:
+            self._field_view(s.world.location)
+            return
+        self._show(title, text, back, scene, "BACK", "event")
+        self._seg("F")
 
     # ── EXPEDITIONS (overworld sandbox) ────────────────────
 
@@ -1550,7 +1833,8 @@ class RidgeMode:
                    ("The decommissioned cabin smells of cold ash. In the desk drawer: a headset with the "
                     "foam torn off, and one log page in a hand that presses too hard. The service light "
                     "above the southern window blinks once — then remembers it is dead."),
-                   [{"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
+                   [{"label": "Read the Log Page", "effect": {"ridge": "site_read", "which": "t1"}},
+                    {"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
                    NODE_SCENE["Fire-Tower 1"], "BACK", "event")
         self._seg("M")
 
@@ -1565,7 +1849,8 @@ class RidgeMode:
                    ("Charred beams lean over a dry cellar. The safe behind the stone hearth is open — inside, "
                     "a working tape recorder and three cassettes. On play: heavy breathing, a dog that died "
                     "in Ohio forty years ago, and a voice asking you, politely, to open the latch just a crack."),
-                   [{"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
+                   [{"label": "Play the Cassette Again", "effect": {"ridge": "site_read", "which": "cassette"}},
+                    {"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
                    NODE_SCENE["Ranger Station Ruins"], "BACK", "event")
         self._seg("M")
 
@@ -1584,7 +1869,8 @@ class RidgeMode:
                     "the interior. The corporate lockbox is open: 1991 incident files and a military logistics "
                     "sheet stamped DARK — a non-human skeleton in the limestone, warm when recovered. "
                     "The recovery vehicle refused to start for eleven hours."),
-                   [{"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
+                   [{"label": "Read the Incident File", "effect": {"ridge": "site_read", "which": "incident"}},
+                    {"label": "Back to Tower 2", "effect": {"ridge": "hub"}}],
                    NODE_SCENE["Overturned Railcar"], "BACK", "event")
         self._seg("M")
 
@@ -2026,7 +2312,8 @@ class RidgeMode:
         data = ENDINGS.get(key, ENDINGS["white_noise"])
         s.ending_id = key
         s.ending_title = data["title"]
-        s.ending_text = data["text"]
+        coda = self._ending_coda()
+        s.ending_text = data["text"] + (("\n\n" + coda) if coda else "")
         s.game_over = True
         s.victory = bool(data["victory"])
         s.mode = "ending"
@@ -2034,10 +2321,46 @@ class RidgeMode:
         s.scene = "ridge_ending"
         s.confirm_label = "—"
         s.log.append(f"── {data['title']} ──")
-        s.log.append(data["text"][:300])
+        s.log.append(s.ending_text[:300])
         self._seg("P" if s.victory else "E")
         if s.victory:
             await self.e.buzzer.victory()
         else:
             await self.e.buzzer.game_over()
         self.e._ending_menu()
+
+    def _ending_coda(self) -> str:
+        """The epilogue that remembers what THIS run actually did — at most
+        two lines, chosen for weight rather than quantity."""
+        F = self.F
+        learn = int(F.get("rd_learn", 0))
+        parts = []
+        if F.get("rd_answered_the_ridge"):
+            parts.append(
+                "You answered it once. Somewhere on this ridge, right now, a radio is repeating your "
+                "answer in your own cadence — to someone who will answer back."
+            )
+        if learn >= 75:
+            parts.append(
+                f"The ridge learned you at {learn} percent. It does not need you anymore. "
+                "It only needs your shape, and it has that now."
+            )
+        if int(F.get("rd_calm_count", 0)) >= 3:
+            parts.append(
+                f"On {F['rd_calm_count']} separate days the window swore everything was fine. "
+                "The record shows you checked anyway. The record shows you stopped."
+            )
+        if int(F.get("rd_wrong_home_count", 0)) >= 3:
+            parts.append(
+                "You came home to a room that had been practicing being your home more times than "
+                "you care to log. You never did find out which of those nights was the real one."
+            )
+        dead = [k for k in ("mark", "chloe", "sam")
+                if not self.s.world.npcs.get(k, {}).get("alive")]
+        if dead:
+            names = ", ".join(self.s.world.npcs[k].get("short", k.title()) for k in dead)
+            parts.append(
+                f"They will list {names} as missing. You will know exactly where they are, "
+                "and no one will climb up to see."
+            )
+        return "\n\n".join(parts[:2])

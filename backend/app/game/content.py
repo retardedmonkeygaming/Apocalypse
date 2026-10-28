@@ -662,11 +662,48 @@ def ending_for(state) -> str:
     return "died"
 
 
+def _ending_coda(state, victory: bool) -> str:
+    """Epilogue line(s) that remember what THIS run did — at most two."""
+    p = state.player
+    parts = []
+    if p.humanity <= 18:
+        parts.append(
+            "Somewhere in the last week you stopped flinching. That was not adaptation. "
+            "That was replacement — and it happened quietly, while you were counting supplies."
+        )
+    elif p.humanity >= 55:
+        parts.append(
+            "You kept the one thing out here that cannot be looted, traded, or faked — "
+            "and it is the only reason anyone still recognizes your face."
+        )
+    if p.morale <= 20:
+        parts.append(
+            "You still hear them in the quiet parts: saying the things you said, "
+            "one beat too late, practicing."
+        )
+    try:
+        alive = sum(1 for n in (state.world.npcs or {}).values() if n.get("alive"))
+    except Exception:
+        alive = 3
+    if victory and alive >= 3:
+        parts.append(
+            "You made it out with people still intact. The reports will call that a miracle. "
+            "You will call it a headcount."
+        )
+    elif alive <= 1:
+        parts.append(
+            "The empty chairs stay where they are. You do not move them. Moving them would be "
+            "arithmetic you are not ready for."
+        )
+    return "\n\n".join(parts[:2])
+
+
 def apply_ending(state, ending_id: str, victory: bool) -> None:
     data = ENDINGS.get(ending_id, ENDINGS["died"])
     state.ending_id = ending_id
     state.ending_title = data["title"]
-    state.ending_text = data["text"]
+    coda = _ending_coda(state, victory)
+    state.ending_text = data["text"] + (("\n\n" + coda) if coda else "")
     state.game_over = True
     state.victory = victory
     state.mode = "ending"
@@ -674,4 +711,4 @@ def apply_ending(state, ending_id: str, victory: bool) -> None:
     state.scene = "ending"
     state.confirm_label = "—"
     state.log.append(f"── {data['title']} ──")
-    state.log.append(data["text"])
+    state.log.append(state.ending_text)

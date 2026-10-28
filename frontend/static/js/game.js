@@ -10,7 +10,16 @@ window.socket = socket;
 
 socket.on("state", (state) => {
   window.__rdState = state; // shared with pixel.js (party/seal lookups)
-  updateUI(state);
+  try {
+    updateUI(state);
+  } catch (err) {
+    // One bad subsystem must never wedge the whole interface — log once and
+    // repaint on the next push (the guards inside updateUI disable the culprit).
+    if (!window.__uiWarned) {
+      window.__uiWarned = true;
+      console.error("[ui] paint error (further occurrences suppressed):", err);
+    }
+  }
 });
 
 socket.connect();
@@ -20,7 +29,10 @@ socket.connect();
 fetch("/api/state")
   .then((r) => (r.ok ? r.json() : null))
   .then((s) => {
-    if (s && s.player) updateUI(s);
+    if (s && s.player) {
+      window.__rdState = s;
+      try { updateUI(s); } catch (e) { console.error("[ui] first paint error:", e); }
+    }
   })
   .catch(() => {});
 
@@ -227,8 +239,17 @@ document.addEventListener("keydown", (e) => {
 });
 
 // 4. ANIMATION TICKER FOR PROCEDURAL PIXEL CANVAS
+// Skipped entirely while the 3D view owns the screen: the hidden 2D canvas
+// was still being redrawn 12×/s, which is pure GPU/CPU burn on a Pi 4.
 setInterval(() => {
+  if (window.__pixelBroken) return;
+  if (window.Scene3D && Scene3D.active) return;
   if (window.Scene && Scene.lastState) {
-    Scene.render(Scene.lastState);
+    try {
+      Scene.render(Scene.lastState);
+    } catch (e) {
+      window.__pixelBroken = true;
+      console.error("[pixel] animation ticker stopped:", e);
+    }
   }
 }, 80);

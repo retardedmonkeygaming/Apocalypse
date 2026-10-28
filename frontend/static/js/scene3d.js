@@ -20,7 +20,8 @@ const Scene3D = (() => {
   let _state = null;
   let _set = null;                 // current location set name
   let _built = {};                 // lazily-built groups
-  let _figs = [], _walker = null, _lieFig = null, _bigFig = null;
+  let _figs = [], _walker = null, _lieFig = null, _bigFig = null, _foeFig = null;
+  let _vPos = [0, 1.62, 1.55], _vLook = [0, 1.35, -40];
   let _candle = null, _sun = null, _hemi = null, _sky = null;
   let _tower3Light = null, _rain = null, _swayGroups = [];
   let _mats = {};
@@ -170,7 +171,7 @@ const Scene3D = (() => {
     _tier = _resolveTier();
     // tear down location groups; they rebuild at the new tier
     Object.values(_built).forEach((g) => _scene.remove(g));
-    _built = {}; _figs = []; _walker = null; _lieFig = null; _bigFig = null;
+    _built = {}; _figs = []; _walker = null; _lieFig = null; _bigFig = null; _foeFig = null;
     _candle = null; _sun = null; _hemi = null; _tower3Light = null; _rain = null; _swayGroups = [];
     _scene.children.slice().forEach((c) => { if (c.isLight || c.isSprite) _scene.remove(c); });
     _scene.background = null;
@@ -601,11 +602,113 @@ const Scene3D = (() => {
     return g;
   }
 
+  // ── CLASSIC SAFEHOUSE — the boarded apartment the campaign opens in ──
+  function _buildInterior() {
+    const g = new THREE.Group();
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x2a2620, roughness: 0.96 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a3a26, roughness: 1.0 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1e1a16, roughness: 1.0 });
+
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(17, 14), floorMat);
+    floor.rotation.x = -Math.PI / 2; g.add(floor);
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(17, 14), wallMat);
+    ceil.rotation.x = Math.PI / 2; ceil.position.y = 3.4; g.add(ceil);
+
+    // Back wall built around a window opening (x -3..3, y 1.0..2.4)
+    _box(5.5, 3.4, 0.3, wallMat, -5.75, 1.7, -6, g);
+    _box(5.5, 3.4, 0.3, wallMat, 5.75, 1.7, -6, g);
+    _box(6.0, 1.0, 0.3, wallMat, 0, 2.9, -6, g);
+    _box(6.0, 1.0, 0.3, wallMat, 0, 0.5, -6, g);
+    _box(0.3, 3.4, 12, wallMat, -8.5, 1.7, 0, g);
+    _box(0.3, 3.4, 12, wallMat, 8.5, 1.7, 0, g);
+
+    // Plywood boards over the window — the campaign's first image
+    for (let i = 0; i < 4; i++) {
+      const p = _box(6.6, 0.36, 0.14, woodMat, 0, 1.15 + i * 0.42, -5.78, g);
+      p.rotation.z = (i % 2 ? 0.14 : -0.12);
+    }
+    // Cold street light bleeding through the gaps
+    const slit = new THREE.PointLight(0x7fa8d8, 0.7, 11, 2);
+    slit.position.set(0, 1.8, -6.4); g.add(slit);
+
+    // Desk, radio, workbench
+    _box(3.4, 0.14, 1.3, woodMat, -2.4, 1.0, -3.8, g);
+    _box(0.14, 1.0, 1.2, woodMat, -3.9, 0.5, -3.8, g);
+    _box(0.14, 1.0, 1.2, woodMat, -0.9, 0.5, -3.8, g);
+    _box(0.8, 0.36, 0.44, new THREE.MeshStandardMaterial({ color: 0x191c20, roughness: 0.7 }), -1.7, 1.25, -3.8, g);
+    _box(0.1, 0.5, 0.1, new THREE.MeshStandardMaterial({ color: 0x2b2f33 }), -3.1, 1.3, -3.9, g); // antenna
+    _box(2.6, 0.9, 1.0, new THREE.MeshStandardMaterial({ color: 0x33383d, roughness: 0.8, metalness: 0.4 }), 4.4, 0.45, -2.4, g); // workbench
+    _box(1.2, 0.5, 0.7, woodMat, 6.6, 0.25, 2.4, g); // crate
+
+    // Desk lamp — keeps the room readable at night without any global light
+    const lamp = new THREE.PointLight(0xffb066, 1.5, 13, 2);
+    lamp.position.set(-3.0, 1.9, -3.6); g.add(lamp);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xffd9a0, emissive: 0xffb066, emissiveIntensity: 2.4 }));
+    bulb.position.copy(lamp.position); g.add(bulb);
+    return g;
+  }
+
+  // ── CLASSIC STREET — ground level in the dead city ──
+  function _buildStreet() {
+    const g = new THREE.Group();
+    const roadMat = new THREE.MeshStandardMaterial({ color: 0x14171b, roughness: 0.96 });
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(26, 240), roadMat);
+    road.rotation.x = -Math.PI / 2; g.add(road);
+    const walkMat = new THREE.MeshStandardMaterial({ color: 0x1d2127, roughness: 1 });
+    _box(7, 0.22, 240, walkMat, -16.5, 0.11, 0, g);
+    _box(7, 0.22, 240, walkMat, 16.5, 0.11, 0, g);
+
+    const fA = new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.93 });
+    const fB = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.93 });
+    const winMat = new THREE.MeshStandardMaterial({ color: 0x0d1013, emissive: 0x22303f, emissiveIntensity: 0.7 });
+    const litMat = new THREE.MeshStandardMaterial({ color: 0x14171a, emissive: 0xffa850, emissiveIntensity: 1.5 });
+    const n = _tier === "high" ? 15 : 10;
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < n; i++) {
+        const h = 7 + Math.random() * 17;
+        const z = -78 + (i / n) * 156 + Math.random() * 4;
+        const x = side * (13 + Math.random() * 4);
+        _box(9 + Math.random() * 4, h, 10, Math.random() < 0.5 ? fA : fB, x, h / 2, z, g);
+        // Window grid on the street face — mostly dead, a few still burning
+        const cols = Math.min(4, Math.floor(h / 4));
+        for (let c = 0; c < cols; c++) {
+          const lit = Math.random() < 0.12;
+          _box(1.2, 1.5, 0.12, lit ? litMat : winMat,
+            x - side * 4.7, 2.2 + c * 3.6, z + (Math.random() - 0.5) * 5, g);
+        }
+      }
+    }
+
+    // Wrecks and rubble
+    const carCols = [0x2b3036, 0x35312c, 0x2a302a, 0x30262a];
+    for (let i = 0; i < 6; i++) {
+      const c = _box(1.9, 1.35, 4.4,
+        new THREE.MeshStandardMaterial({ color: carCols[i % 4], roughness: 0.7, metalness: 0.35 }),
+        (i % 2 ? 4.5 : -4.5) + (Math.random() - 0.5) * 2, 0.7, -55 + i * 20, g);
+      c.rotation.y = (Math.random() - 0.5) * 0.8;
+    }
+    for (let i = 0; i < 14; i++) {
+      _box(0.5 + Math.random(), 0.3 + Math.random() * 0.5, 0.5 + Math.random(), fB,
+        (Math.random() - 0.5) * 22, 0.2, (Math.random() - 0.5) * 140, g);
+    }
+
+    // Street lamps — three survivors on the block, still on
+    [[-7, -26], [7, 4], [-7, 34]].forEach(([x, z]) => {
+      _box(0.2, 6, 0.2, new THREE.MeshStandardMaterial({ color: 0x23262a, metalness: 0.5, roughness: 0.6 }), x, 3, z, g);
+      _box(0.8, 0.3, 0.8, new THREE.MeshStandardMaterial({ color: 0x2a2c30, emissive: 0xffb055, emissiveIntensity: 1.6 }), x, 6.1, z, g);
+      const l = new THREE.PointLight(0xffb066, 1.0, 24, 2);
+      l.position.set(x, 6.0, z); g.add(l);
+    });
+    return g;
+  }
+
   // Map scene ids → set builders
   const SET_BUILDERS = {
     cabin: _buildCabin, bridge: _buildBridge, ruins: _buildRuins, railcar: _buildRailcar,
     sinkhole: _buildSinkhole, cabins: _buildRuinsHuts, mine: _buildMine, clearing: _buildClearing,
     city: _buildCity, exterior: _buildExteriorTower, ravine: _buildRavine,
+    interior: _buildInterior, street: _buildStreet,
   };
 
   // Camera vantage per set: [pos, lookAt]
@@ -621,6 +724,8 @@ const Scene3D = (() => {
     clearing: [[0, 2.2, 13], [0, 1.0, 0]],
     city: [[0, 12, 40], [0, 8, -20]],
     ravine: [[0, 3.4, 20], [0, -5, -20]],
+    interior: [[0, 1.62, 4.6], [0, 1.45, -6]],
+    street: [[0, 1.95, 17], [0, 1.75, -22]],
   };
 
   function _setLocation(name) {
@@ -663,21 +768,33 @@ const Scene3D = (() => {
 
   function _applyVantage(name) {
     const v = VANTAGE[name] || VANTAGE.exterior;
+    _vPos = v[0]; _vLook = v[1];
+    if (name === "street") {
+      // Every classic location stands on a different block of the same dead
+      // city — derive a stable offset from the scene name so revisits and
+      // different venues never share one identical camera.
+      const sc = String((_state && _state.scene) || "");
+      let h = 7;
+      for (let i = 0; i < sc.length; i++) h = (h * 31 + sc.charCodeAt(i)) >>> 0;
+      const off = ((h % 5) - 2) * 7;
+      _vPos = [((h >> 3) % 3 - 1) * 3.2, 1.95, 17 + off];
+      _vLook = [((h >> 7) % 5 - 2) * 2.2, 1.75, -22 + off * 0.5];
+    }
     if (name === "cabin") {
       // Interior: standing at the north window looking out over the forest
       _camera.position.set(0, 1.62, 1.55);
       _camera.lookAt(0, 1.35, -40);
       if (_candle) { _candle.position.set(-2.3, 1.3, -2.3); _candle.intensity = 0; }
     } else {
-      _camera.position.set(...v[0]);
-      _camera.lookAt(...v[1]);
+      _camera.position.set(..._vPos);
+      _camera.lookAt(..._vLook);
       if (_candle) _candle.intensity = 0;
     }
   }
 
   function _clearFigures() {
     _figs.forEach((f) => (f.visible = false));
-    [_walker, _lieFig, _bigFig].forEach((f) => { if (f) f.visible = false; });
+    [_walker, _lieFig, _bigFig, _foeFig].forEach((f) => { if (f) f.visible = false; });
   }
 
   // ───────────────────────── threats from state ─────────────────────────
@@ -710,7 +827,22 @@ const Scene3D = (() => {
       _scene.add(_lieFig);
       _lieFig.visible = false;
     }
-    const lie = st.scenario === "dead_ridge" && sanity < 50 && _set === "cabin" && Math.sin(t * 0.21) > 0.55;
+    // Combat: the thing sharing your street / your room
+    if (!_foeFig) { _foeFig = _figure(0x15110f, 1.78); _scene.add(_foeFig); _foeFig.visible = false; }
+    const inCombat = (st.scene || "").toLowerCase().includes("combat") || !!(st.combat && st.combat.active);
+    const foe = inCombat && (_set === "street" || _set === "interior");
+    _foeFig.visible = foe;
+    if (foe) {
+      const stage = _set === "street" ? -9.5 : -3.6;
+      _foeFig.position.set(Math.sin(t * 0.5) * 1.4, Math.abs(Math.sin(t * 5)) * 0.05,
+        stage + Math.sin(t * 0.23) * 1.6);
+      _foeFig.rotation.y = Math.sin(t * 0.7) * 0.4;
+    }
+
+    // A companion standing outside who is inside. Full-blast below 50 sanity;
+    // above it the window only sneaks one in now and then.
+    const lieGate = sanity < 50 ? Math.sin(t * 0.21) > 0.55 : Math.sin(t * 0.06) > 0.93;
+    const lie = st.scenario === "dead_ridge" && sanity < 62 && _set === "cabin" && lieGate;
     _lieFig.visible = lie;
     if (lie) { _lieFig.position.set(6.5, -21.6, -24); _lieFig.rotation.y = 0; }
 
@@ -781,7 +913,9 @@ const Scene3D = (() => {
     if (_rain) { _rain.visible = wantRain; if (wantRain) _animateRain(_rain, t); }
 
     // Wind sway: amplitude from awareness metric (matches the 2D engine's wind)
-    const wind = 0.4 + awareness / 100 * 1.6 + (weather === "storm" ? 1.2 : 0);
+    // FALSE CALM: the ridge holds its breath for the rest of the day.
+    const calmDay = flags.rd_false_calm_day != null && Number(flags.rd_false_calm_day) === (w.day || 0);
+    const wind = calmDay ? 0.015 : 0.4 + awareness / 100 * 1.6 + (weather === "storm" ? 1.2 : 0);
     _swayGroups.forEach((grp, i) => {
       grp.rotation.z = Math.sin(t * 0.6 + i) * 0.004 * wind;
       grp.rotation.x = Math.cos(t * 0.45 + i * 1.3) * 0.003 * wind;
@@ -850,7 +984,13 @@ const Scene3D = (() => {
   // ───────────────────────── scene routing from game state ─────────────────────────
   function _sceneToSet(st) {
     const sc = (st.scene || "").toLowerCase();
-    if (st.scenario !== "dead_ridge") return "city";   // classic mode = city view
+    if (st.scenario !== "dead_ridge") {
+      // Classic campaign: safehouse scenes put you inside the boarded room;
+      // everything else is street level in the dead city.
+      if (/(^|[^a-z])(base|radio|marcus|lena|kid|miriam|apartment|safe)([^a-z]|$)/.test(sc)) return "interior";
+      if (sc.includes("ending")) return "city";
+      return "street";
+    }
     if (sc.includes("bridge")) return "bridge";
     if (sc.includes("ravine")) return "ravine";
     if (sc.includes("ruins")) return "ruins";
@@ -895,6 +1035,17 @@ const Scene3D = (() => {
       _camera.position.x = Math.sin(_clock * 0.35) * 0.03;
       _camera.position.y = 1.62 + Math.sin(_clock * 0.6) * 0.015;
       _camera.lookAt(Math.sin(_clock * 0.13) * 0.8, 1.35 + Math.sin(_clock * 0.2) * 0.1, -40);
+    } else if (_set === "interior") {
+      _camera.position.x = _vPos[0] + Math.sin(_clock * 0.3) * 0.05;
+      _camera.position.y = _vPos[1] + Math.sin(_clock * 0.55) * 0.015;
+      _camera.position.z = _vPos[2] + Math.sin(_clock * 0.22) * 0.04;
+      _camera.lookAt(_vLook[0] + Math.sin(_clock * 0.11) * 0.5,
+        _vLook[1] + Math.sin(_clock * 0.18) * 0.06, _vLook[2]);
+    } else if (_set === "street") {
+      // Uneven breathing — you are moving through a hostile place
+      _camera.position.x = _vPos[0] + Math.sin(_clock * 0.9) * 0.16;
+      _camera.position.y = _vPos[1] + Math.sin(_clock * 1.6) * 0.045;
+      _camera.lookAt(_vLook[0] + Math.sin(_clock * 0.4) * 1.6, _vLook[1], _vLook[2]);
     }
     _renderer.render(_scene, _camera);
   }
@@ -903,11 +1054,21 @@ const Scene3D = (() => {
   return {
     get active() { return _active && _enabled && !!_renderer; },
     get tier() { return _tier; },
+    get currentSet() { return _set; },
     supported,
     label,
     init() { if (_enabled && supported()) _init(); else _applyVisibility(); },
     update,
     cycleQuality,
+    // A runtime failure (no usable WebGL on the kiosk GPU) drops to the 2D
+    // pixel view for the rest of the session without touching the preference.
+    disable() {
+      _quality = "off";
+      _enabled = false;
+      _active = false;
+      _applyVisibility();
+      return label();
+    },
     // Used by tests / debugging
     _internal: () => ({ set: _set, tier: _tier, enabled: _enabled, sets: Object.keys(_built) }),
   };

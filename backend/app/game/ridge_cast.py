@@ -238,7 +238,100 @@ WINDOW_LIES: List[Dict[str, Any]] = [
     {"id": "wl_sam", "text": "Sam is on the catwalk, photographing you through the glass. Sam is asleep on the cot behind you. The flash goes off twice.", "san": -8, "aware": 5, "flag": "rd_window_lies"},
 ]
 
-# Focus-binoculars sightings: real intel that scales with campaign stage
+# SUBTLE lies — the window at medium sanity. Deniable. One detail wrong.
+# The player should finish reading and think: …wait.
+SUBTLE_LIES: List[Dict[str, Any]] = [
+    {"id": "sl_wind", "text": "The wind is pushing the fog east — but the fog is drifting west, against it, in a straight line, like something is walking through it.", "san": -2, "aware": 3, "flag": "rd_window_lies"},
+    {"id": "sl_count", "text": "You count four vehicles at the Compass Cabins road. You count again. There were never vehicles. The gravel is undisturbed.", "san": -3, "aware": 2, "flag": "rd_window_lies"},
+    {"id": "sl_chloe2", "text": "Chloe's reflection is in the glass behind you — standing closer to the window than Chloe is standing behind you. It notices you noticing.", "san": -3, "aware": 4, "flag": "rd_window_lies"},
+    {"id": "sl_light", "text": "A porch light at the cabins blinks out. You never saw it turn on. Darkness that was already there is now missing it.", "san": -2, "aware": 3, "flag": "rd_window_lies"},
+    {"id": "sl_tree", "text": "One pine at the treeline is facing the wrong way. Not bent — rooted that way. It holds still while everything else moves.", "san": -3, "aware": 4, "flag": "rd_window_lies"},
+    {"id": "sl_wave", "text": "Something on the ravine rim waves. It waits. It waves again — slower, the way you wave at someone you have decided to stop liking.", "san": -3, "aware": 4, "flag": "rd_window_lies"},
+]
+
+# FALSE CALM — the window reporting perfect safety on purpose. These read like
+# good news. They are the most disturbing events in the mode, because the
+# world does not actually get to be this quiet.
+FALSE_CALM: List[Dict[str, Any]] = [
+    {"id": "fc_all", "text": "Perfect quiet. Fog level. No wind. You realize you have been holding your breath — and you are not the only breathing in this room that matches the rhythm of the glass.", "san": -4, "aware": 4, "flag": "rd_false_calm"},
+    {"id": "fc_tower3", "text": "Tower 3 is lit and warm and someone is waving from its deck — a friendly, ordinary wave. You wave back. Then you remember you were told Tower 3 went dark in 1999.", "san": -5, "aware": 5, "flag": "rd_false_calm"},
+    {"id": "fc_clear", "text": "Nothing on the ridge. Nothing at the bridge, the cabins, the shaft. Everything is fine. The words arrive in your head in your own voice, which you did not think.", "san": -5, "aware": 3, "flag": "rd_false_calm"},
+    {"id": "fc_crew", "text": "Behind you, Mark, Chloe and Sam all stop talking at exactly the same moment. The silence lasts one beat too long. Then they resume, mid-word, out of order.", "san": -4, "aware": 4, "flag": "rd_false_calm"},
+]
+
+# What the crew says right AFTER something wrong happens — they noticed too.
+# Keyed by event; only companions alive and at base can speak.
+EVENT_LINES: Dict[str, List[Any]] = {
+    "false_calm": [
+        ("mark", "Did you feel that? The static stopped like someone pressed a button on it."),
+        ("chloe", "Don't call it peaceful. Nothing on this ridge is peaceful. Things here are only paused."),
+        ("sam", "I didn't take a picture. I wanted to. My hands wouldn't. That's never happened."),
+        ("ash", "It goes quiet when it's proud. Like Dad after a good lie."),
+        ("cole", "Hold still. When the ridge stops moving, it's deciding which of us to practice on."),
+    ],
+    "window_lie": [
+        ("chloe", "You've got that face again. What did the glass show you? Don't say it out loud if it used my name."),
+        ("mark", "The window lies hardest in the small hours. Log the time. Every time. Patterns live in logs."),
+        ("sam", "Whatever you saw — shoot it next time. Or don't. I still haven't decided which is worse."),
+        ("elena", "The glass reports. It does not tell the truth. Learn the difference before week three."),
+        ("cole", "My predecessor wrote the same line forty times in his log: 'CHECKED AGAIN. STILL THERE.'"),
+    ],
+    "wrong_home": [
+        ("chloe", "You're staring. I've been here the whole time. Ask Mark. Mark was here too. Say it like you mean it."),
+        ("mark", "Everything normal. Say it with me — nor-mal. Good. We're good."),
+        ("sam", "If the room's been rehearsing, it's getting good. The mug was steaming before the stove was lit."),
+        ("elena", "Spend a full minute touching things. Cold is real. Warm is data."),
+    ],
+    "morse": [
+        ("mark", "Grounding loops don't spell anything. I looked it up twice — my notes say something else the second time."),
+        ("chloe", "If that tower answers us tonight, we don't answer back. Say agreement."),
+        ("sam", "Three green bursts. I counted the frames. There's a fourth in the negative."),
+        ("cole", "Tower 3 went dark in '99. Whatever's keying that lamp learned the alphabet since."),
+    ],
+    "radio_hijack": [
+        ("mark", "That was my bandwidth. Only my bandwidth. Nobody else keys that mic."),
+        ("elena", "Hear the cadence match? That isn't playback. Playback breathes wrong. This breathes like you."),
+        ("chloe", "Next time it uses my voice, you don't tell me. I'm asking you now: don't tell me."),
+    ],
+}
+
+# INCONSISTENCIES — small, verifiable lies from people under pressure. The
+# player can check every one against the room they are sitting in. That is
+# what makes them worse than monsters.
+INCONSISTENCIES: List[Dict[str, Any]] = [
+    {"id": "ic_table", "who": "mark", "line": "There are four of us at this table.",
+     "check": "There are three of you at this table. There have always been three."},
+    {"id": "ic_ladder", "who": "chloe", "line": "The ladder's gone. The ladder's — no. It's there. It was always there.",
+     "check": "The ladder is there. The ladder has always been there. Check again if you need to."},
+    {"id": "ic_camera", "who": "sam", "line": "I never took a photo of you. Why do I have your face on the card then?",
+     "check": "You have never let Sam photograph you. You would remember the flash."},
+    {"id": "ic_march", "who": "mark", "line": "Pendelton left in March. He just walked off in March, in the thaw.",
+     "check": "Pendelton vanished six days before you arrived. Nobody has said March out loud. Not once."},
+    {"id": "ic_windows", "who": "sam", "line": "Count the cabin windows with me. Three. Two. It's two.",
+     "check": "The cabin has one window. It has always had one window."},
+    {"id": "ic_sleep", "who": "chloe", "line": "I slept fine. I sleep fine every night. You know that — you hear me.",
+     "check": "Chloe has not slept a full night since day four. You have heard every one of her nights."},
+    {"id": "ic_shaft", "who": "cole", "line": "Mining Shaft 4 was sealed before I was hired. Long before. I've never seen it open.",
+     "needs": "rd_mine_done",
+     "check": "You were inside Shaft 4. Cole's boot prints were in the silt beside yours."},
+    {"id": "ic_kid", "who": "ash", "line": "I've always lived here. In the tower. With you. Since always.",
+     "needs": "rd_ash_met",
+     "check": "Ash was found at the clearing. Ash has been here eleven days. Ash says 'since always'."},
+]
+
+
+def crew_observation(event: Optional[str], present: List[str]) -> Optional[Dict[str, str]]:
+    """A companion's reaction to something that just happened, if one of the
+    survivors of the base was around to see it."""
+    if not event:
+        return None
+    opts = [(w, t) for (w, t) in EVENT_LINES.get(event, []) if w in present]
+    if not opts:
+        return None
+    who, text = random.choice(opts)
+    return {"who": who, "line": text}
+
+
 FOCUS_SIGHTINGS: Dict[str, List[str]] = {
     "early": [
         "Boot prints in the mud below the ladder. Someone stood under this tower for hours. The prints point at the door, never away.",

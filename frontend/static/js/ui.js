@@ -160,8 +160,10 @@ function updateUI(state) {
   const p = state.player;
   const w = state.world;
 
-  // 0. 3D VIEWPORT — same state drives the WebGL scene when enabled
-  if (window.Scene3D) Scene3D.update(state);
+  // NOTE: the 3D viewport is refreshed at the very END of this function.
+  // It used to run first, so a WebGL failure on weak GPUs (Raspberry Pi)
+  // aborted the paint before the arcade buttons or the map were ever
+  // touched — which is exactly how the cabinet ended up with dead controls.
 
   // 1. HUD & CLOCK
   document.getElementById("day").textContent = w.day;
@@ -371,10 +373,10 @@ function updateUI(state) {
     } else {
       SFX.play(state.fx);
     }
-    if (isRidge && window.SFX.ridgeTick) {
-      SFX.ridgeTick(state);
-    } else if (window.SFX.ridgeTick) {
-      SFX.ridgeTick(null); // stop horror layers outside ridge runs
+    // Ambient wind bed runs in every mode; full horror stack only on ridge
+    if (window.SFX.ambientTick) SFX.ambientTick(state);
+    if (window.SFX.ridgeTick) {
+      SFX.ridgeTick(isRidge ? state : null);
     }
   }
 
@@ -388,27 +390,44 @@ function updateUI(state) {
     }
   }
 
-  // 13. RENDER PIXEL CANVAS
-  if (window.Scene) {
-    Scene.render(state);
+  // 13. RENDER PIXEL CANVAS (guarded — a canvas/GL failure must never
+  //      take the rest of the interface down with it)
+  if (window.Scene && !window.__pixelBroken) {
+    try {
+      Scene.render(state);
+    } catch (err) {
+      window.__pixelBroken = true;
+      console.error("[pixel] renderer disabled after failure:", err);
+    }
   }
 
   // 14. UPDATE CITY MAP
-  if (window.CityMap) {
-    CityMap.update(state);
-    // The map menu announces itself: slide the tactical map open once
-    if (state.last_action === "__open_map__") {
-      const nonce = (state.current_event || {}).nonce;
-      if (_mapOpenedFor !== nonce) {
-        _mapOpenedFor = nonce;
-        CityMap.show();
+  if (window.CityMap && !window.__mapBroken) {
+    try {
+      CityMap.update(state);
+      // The map menu announces itself: slide the tactical map open once
+      if (state.last_action === "__open_map__") {
+        const nonce = (state.current_event || {}).nonce;
+        if (_mapOpenedFor !== nonce) {
+          _mapOpenedFor = nonce;
+          CityMap.show();
+        }
       }
+    } catch (err) {
+      window.__mapBroken = true;
+      console.error("[map] disabled after failure:", err);
     }
   }
 
   // 14b. FORESTOS LAPTOP OVERLAY & WEATHER STATION (Dead Ridge)
-  if (window.LaptopOS) LaptopOS.update(state);
-  if (window.WeatherStation) WeatherStation.update(state);
+  try {
+    if (window.LaptopOS) LaptopOS.update(state);
+    if (window.WeatherStation) WeatherStation.update(state);
+  } catch (err) {
+    console.error("[overlay] disabled after failure:", err);
+    window.LaptopOS = null;
+    window.WeatherStation = null;
+  }
 
   // 15. GAME OVER / ENDING DISPLAY
   if (state.game_over) {
@@ -420,6 +439,24 @@ function updateUI(state) {
       "ending",
       22
     );
+  }
+
+  // 16. 3D VIEWPORT — LAST, and self-disabling.
+  // Runs after every interface surface has been painted, so a GPU without a
+  // working WebGL context (Pi 4 kiosk Chromium, SwiftShader-less builds) can
+  // only ever cost itself the 3D view, never the buttons or the map.
+  if (window.Scene3D && !window.__scene3DBroken) {
+    try {
+      Scene3D.update(state);
+    } catch (err) {
+      window.__scene3DBroken = true;
+      console.error("[3D] disabled after failure — staying on the pixel view:", err);
+      try {
+        const msg = Scene3D.disable();
+        const btn = document.getElementById("btn-3d");
+        if (btn) btn.textContent = msg;
+      } catch (_) {}
+    }
   }
 }
 
